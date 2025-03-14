@@ -2,6 +2,7 @@ import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateCol
 import { CourseCategory } from './course_category.entity';
 import { Lesson } from './lesson.entity';
 import { QCM } from './qcm.entity';
+import { Enrollment } from './enrollment.entity';
 
 export enum DifficultyLevel {
   BEGINNER = 'beginner',
@@ -69,4 +70,7 @@ export class Course {
     onDelete: 'CASCADE'
   })
   qcms: QCM[];
+
+  @OneToMany(() => Enrollment, enrollment => enrollment.course)
+  enrollments: Enrollment[];
 } 

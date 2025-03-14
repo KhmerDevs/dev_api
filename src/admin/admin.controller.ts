@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Put, Delete, Param, UseGuards, UseInterceptors, UploadedFile } from '@nestjs/common';
+import { Controller, Get, Post, Body, Put, Delete, Param, UseGuards, UseInterceptors, UploadedFile, Query } from '@nestjs/common';
 import { AdminService } from './admin.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { AdminGuard } from '../auth/guards/admin.guard';
@@ -11,6 +11,8 @@ import { UpdateCourseDto } from './dto/course/update-course.dto';
 import { CreateLessonDto } from './dto/lesson/create-lesson.dto';
 import { CreateQcmDto } from './dto/qcm/create-qcm.dto';
 import { CreateRoadmapDto } from './dto/roadmap/create-roadmap.dto';
+import { UserRole } from '../entities/user.entity';
+import { CreateQcmBatchDto } from './dto/qcm/create-qcm-batch.dto';
 @Controller('admin')
 @UseGuards(JwtAuthGuard, AdminGuard)
 export class AdminController {
@@ -30,6 +32,13 @@ export class AdminController {
 
   @Post('users')
   createUser(@Body() createUserDto: CreateUserDto) {
+    return this.adminService.createUser(createUserDto);
+  }
+
+  @Post('users/admin')
+  createAdminUser(@Body() createUserDto: CreateUserDto) {
+    // Ensure role is ADMIN regardless of input
+    createUserDto.role = UserRole.ADMIN;
     return this.adminService.createUser(createUserDto);
   }
 
@@ -207,5 +216,24 @@ export class AdminController {
   @Delete('roadmaps/:id')
   deleteRoadmap(@Param('id') id: number) {
     return this.adminService.deleteRoadmap(id);
+  }
+
+  @Post('qcms/batch')
+  @UseGuards(JwtAuthGuard, AdminGuard)
+  createQcmsBatch(@Body() createQcmBatchDto: CreateQcmBatchDto) {
+    return this.adminService.createQcmsBatch(createQcmBatchDto.questions);
+  }
+
+  @Get('exam-results')
+  getAllExamResults(
+    @Query('courseId') courseId?: number,
+    @Query('userId') userId?: number
+  ) {
+    return this.adminService.getAllExamResults(courseId, userId);
+  }
+
+  @Get('exam-results/:id')
+  getExamResultById(@Param('id') id: number) {
+    return this.adminService.getExamResultById(id);
   }
 } 

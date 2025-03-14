@@ -1,5 +1,6 @@
-import { Entity, Column, PrimaryGeneratedColumn, CreateDateColumn, UpdateDateColumn } from 'typeorm';
+import { Entity, Column, PrimaryGeneratedColumn, CreateDateColumn, UpdateDateColumn, OneToMany } from 'typeorm';
 import { Exclude } from 'class-transformer';
+import { Enrollment } from './enrollment.entity';
 
 export enum UserRole {
   USER = 'user',
@@ -42,4 +43,13 @@ export class User {
 
   @Column({ default: false })
   isGoogleAccount: boolean;
+
+  @Column({ nullable: true })
+  verificationToken: string;
+
+  @Column({ default: false })
+  isVerified: boolean;
+
+  @OneToMany(() => Enrollment, enrollment => enrollment.user)
+  enrollments: Enrollment[];
 } 

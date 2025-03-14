@@ -20,6 +20,7 @@ import { QCM } from '../entities/qcm.entity';
 import { CreateQcmDto } from './dto/qcm/create-qcm.dto';
 import { Roadmap } from '../entities/roadmap.entity';
 import { CreateRoadmapDto } from './dto/roadmap/create-roadmap.dto';
+import { ExamAttempt } from '../entities/exam-attempt.entity';
 
 @Injectable()
 export class AdminService {
@@ -40,6 +41,8 @@ export class AdminService {
     private qcmRepository: Repository<QCM>,
     @InjectRepository(Roadmap)
     private roadmapRepository: Repository<Roadmap>,
+    @InjectRepository(ExamAttempt)
+    private examAttemptRepository: Repository<ExamAttempt>,
   ) {}
 
 
@@ -713,5 +716,84 @@ export class AdminService {
 
     await this.roadmapRepository.update(id, { imageUrl });
     return this.getRoadmap(id);
+  }
+
+  async createQcmsBatch(createQcmDtos: CreateQcmDto[]) {
+    const savedQcms = [];
+    for (const dto of createQcmDtos) {
+      const qcm = this.qcmRepository.create(dto);
+      savedQcms.push(await this.qcmRepository.save(qcm));
+    }
+    return savedQcms;
+  }
+
+  async getAllExamResults(courseId?: number, userId?: number) {
+    // Build the query with optional filters
+    const query: any = {};
+    
+    if (courseId) {
+      query.courseId = courseId;
+    }
+    
+    if (userId) {
+      query.userId = userId;
+    }
+    
+    const examAttempts = await this.examAttemptRepository.find({
+      where: query,
+      relations: ['user', 'course'],
+      order: { createdAt: 'DESC' }
+    });
+    
+    // Format the results to include user and course info
+    return examAttempts.map(attempt => ({
+      id: attempt.id,
+      user: {
+        id: attempt.user.id,
+        name: attempt.user.name,
+        email: attempt.user.email
+      },
+      course: {
+        id: attempt.course.id,
+        title: attempt.course.title
+      },
+      score: attempt.score,
+      passed: attempt.passed,
+      startedAt: attempt.startedAt,
+      submittedAt: attempt.submittedAt,
+      durationInSeconds: attempt.durationInSeconds,
+      createdAt: attempt.createdAt
+    }));
+  }
+
+  async getExamResultById(id: number) {
+    const examAttempt = await this.examAttemptRepository.findOne({
+      where: { id },
+      relations: ['user', 'course']
+    });
+    
+    if (!examAttempt) {
+      throw new NotFoundException('Exam attempt not found');
+    }
+    
+    return {
+      id: examAttempt.id,
+      user: {
+        id: examAttempt.user.id,
+        name: examAttempt.user.name,
+        email: examAttempt.user.email
+      },
+      course: {
+        id: examAttempt.course.id,
+        title: examAttempt.course.title
+      },
+      score: examAttempt.score,
+      passed: examAttempt.passed,
+      answers: examAttempt.answers,
+      startedAt: examAttempt.startedAt,
+      submittedAt: examAttempt.submittedAt,
+      durationInSeconds: examAttempt.durationInSeconds,
+      createdAt: examAttempt.createdAt
+    };
   }
 } 

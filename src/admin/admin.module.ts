@@ -10,6 +10,7 @@ import { CodeExample } from '../entities/code-example.entity';
 import { PracticeExercise } from '../entities/practice-exercise.entity';
 import { QCM } from '../entities/qcm.entity';
 import { Roadmap } from '../entities/roadmap.entity';
+import { ExamAttempt } from '../entities/exam-attempt.entity';
 import { FileUploadService } from '../shared/file-upload.service';
 
 @Module({
@@ -22,7 +23,8 @@ import { FileUploadService } from '../shared/file-upload.service';
       CodeExample,
       PracticeExercise,
       QCM,
-      Roadmap
+      Roadmap,
+      ExamAttempt
     ]),
   ],
   controllers: [AdminController],

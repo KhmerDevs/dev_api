@@ -1,31 +1,29 @@
 import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, CreateDateColumn, UpdateDateColumn } from 'typeorm';
+import { User } from './user.entity';
 import { Course } from './course.entity';
 
-@Entity('qcms')
-export class QCM {
+@Entity('enrollments')
+export class Enrollment {
   @PrimaryGeneratedColumn()
   id: number;
 
-  @Column()
-  question: string;
-
-  @Column('simple-array')
-  options: string[];
+  @ManyToOne(() => User, user => user.enrollments)
+  user: User;
 
   @Column()
-  correctAnswer: number; // Index of the correct answer in options array
+  userId: number;
 
-  @Column()
-  orderIndex: number;
-
-  @ManyToOne(() => Course, course => course.qcms)
+  @ManyToOne(() => Course, course => course.enrollments)
   course: Course;
 
   @Column()
   courseId: number;
 
   @Column({ default: 0 })
-  questionNumber: number;
+  progress: number;
+
+  @Column({ default: false })
+  completed: boolean;
 
   @CreateDateColumn()
   createdAt: Date;
