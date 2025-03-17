@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
+import { Injectable, NotFoundException, ConflictException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { User, UserRole } from '../entities/user.entity';
@@ -150,6 +150,17 @@ export class AdminService {
   }
 
   async deleteCourseCategory(id: number) {
+    // First check if there are any courses using this category
+    const coursesUsingCategory = await this.courseRepository.count({
+      where: { categoryId: id }
+    });
+
+    if (coursesUsingCategory > 0) {
+      throw new ConflictException(
+        `Cannot delete this category because it's being used by ${coursesUsingCategory} course(s). Please reassign or delete these courses first.`
+      );
+    }
+
     const courseCategory = await this.courseCategoryRepository.findOne({ where: { id } });
 
     if (!courseCategory) {
@@ -186,8 +197,23 @@ export class AdminService {
   }
 
   async getAllCourses() {
-    return this.courseRepository.find({
-      relations: ['category'],
+    // Use a query builder to get courses with enrollment counts
+    const coursesWithEnrollments = await this.courseRepository
+      .createQueryBuilder('course')
+      .leftJoinAndSelect('course.category', 'category')
+      .leftJoin('course.enrollments', 'enrollment')
+      .addSelect('COUNT(DISTINCT enrollment.id)', 'enrollmentCount')
+      .groupBy('course.id')
+      .addGroupBy('category.id')
+      .getRawAndEntities();
+
+    // Map the raw results (with count) to the entities
+    return coursesWithEnrollments.entities.map((course, index) => {
+      const rawResult = coursesWithEnrollments.raw[index];
+      return {
+        ...course,
+        enrollmentCount: parseInt(rawResult.enrollmentCount) || 0
+      };
     });
   }
 
@@ -210,10 +236,12 @@ export class AdminService {
         ?.sort((a, b) => (a.orderIndex || 0) - (b.orderIndex || 0))
         ?.map((exercise, index) => ({
           exerciseNumber: index + 1,  // Sequential number for exercises
+          id: exercise.id,  // Include id for reference
           instructions: exercise.instructions,
           starterCode: exercise.starterCode,
-          solution: exercise.solution,
-          isEnabled: exercise.isEnabled
+          solution: exercise.solution,  // Explicitly include solution
+          isEnabled: exercise.isEnabled,
+          orderIndex: exercise.orderIndex || 0
         })),
       createdAt: lesson.createdAt,
       updatedAt: lesson.updatedAt
@@ -221,14 +249,28 @@ export class AdminService {
   }
 
   async getCourse(id: number) {
-    const course = await this.courseRepository.findOne({
-      where: { id },
-      relations: ['category', 'lessons', 'lessons.codeExamples', 'lessons.practiceExercises'],
-    });
+    const courseWithEnrollments = await this.courseRepository
+      .createQueryBuilder('course')
+      .leftJoinAndSelect('course.category', 'category')
+      .leftJoinAndSelect('course.lessons', 'lessons')
+      .leftJoinAndSelect('lessons.codeExamples', 'codeExamples')
+      .leftJoinAndSelect('lessons.practiceExercises', 'practiceExercises')
+      .leftJoin('course.enrollments', 'enrollment')
+      .addSelect('COUNT(DISTINCT enrollment.id)', 'enrollmentCount')
+      .where('course.id = :id', { id })
+      .groupBy('course.id')
+      .addGroupBy('category.id')
+      .addGroupBy('lessons.id')
+      .addGroupBy('codeExamples.id')
+      .addGroupBy('practiceExercises.id')
+      .getRawAndEntities();
 
-    if (!course) {
+    if (courseWithEnrollments.entities.length === 0) {
       throw new NotFoundException('Course not found');
     }
+
+    const course = courseWithEnrollments.entities[0];
+    const enrollmentCount = parseInt(courseWithEnrollments.raw[0]?.enrollmentCount) || 0;
 
     // Sort lessons by orderIndex
     course.lessons.sort((a, b) => a.orderIndex - b.orderIndex);
@@ -240,6 +282,7 @@ export class AdminService {
 
     return {
       ...course,
+      enrollmentCount,
       lessons: transformedLessons
     };
   }
@@ -406,26 +449,46 @@ export class AdminService {
   }
 
   async deleteLesson(id: number) {
-    const lesson = await this.lessonRepository.findOne({ 
+    // Validate that id is a valid number
+    if (isNaN(id) || !Number.isInteger(Number(id)) || id <= 0) {
+      throw new BadRequestException('Lesson ID must be a positive integer');
+    }
+
+    // Get the lesson first to verify it exists
+    const lesson = await this.lessonRepository.findOne({
       where: { id },
-      relations: ['codeExamples', 'practiceExercises'] 
+      relations: ['course'],
     });
 
     if (!lesson) {
-      throw new NotFoundException('Lesson not found');
+      throw new NotFoundException(`Lesson with ID ${id} not found`);
     }
 
-    // First delete related code examples and practice exercises
-    if (lesson.codeExamples && lesson.codeExamples.length > 0) {
-      await this.codeExampleRepository.remove(lesson.codeExamples);
-    }
-    
-    if (lesson.practiceExercises && lesson.practiceExercises.length > 0) {
-      await this.practiceExerciseRepository.remove(lesson.practiceExercises);
-    }
+    const courseId = lesson.courseId;
+    const courseWithLessons = await this.courseRepository
+      .createQueryBuilder('course')
+      .leftJoinAndSelect('course.lessons', 'lesson')
+      .where('course.id = :courseId', { courseId })
+      .getOne();
 
-    // Then delete the lesson
+    // Remove the lesson and update order indexes
     await this.lessonRepository.remove(lesson);
+
+    // If there are other lessons, update their order
+    if (courseWithLessons && courseWithLessons.lessons) {
+      const remainingLessons = courseWithLessons.lessons
+        .filter(l => l.id !== id) // Filter out the deleted lesson
+        .sort((a, b) => a.orderIndex - b.orderIndex);
+
+      // Update order indexes to be sequential
+      for (let i = 0; i < remainingLessons.length; i++) {
+        await this.lessonRepository.update(
+          remainingLessons[i].id,
+          { orderIndex: i + 1 }
+        );
+      }
+    }
+
     return { message: 'Lesson deleted successfully' };
   }
 
@@ -794,6 +857,55 @@ export class AdminService {
       submittedAt: examAttempt.submittedAt,
       durationInSeconds: examAttempt.durationInSeconds,
       createdAt: examAttempt.createdAt
+    };
+  }
+
+  async getAdminProfile(adminId: number) {
+    // Get the admin user
+    const admin = await this.userRepository.findOne({
+      where: { id: adminId, role: UserRole.ADMIN },
+      select: ['id', 'email', 'name', 'role', 'createdAt', 'updatedAt'],
+    });
+
+    if (!admin) {
+      throw new NotFoundException('Admin profile not found');
+    }
+
+    // Get counts for dashboard-like data
+    const totalUsers = await this.userRepository.count();
+    const totalCourses = await this.courseRepository.count();
+    const totalCategories = await this.courseCategoryRepository.count();
+    const publishedCourses = await this.courseRepository.count({ where: { isPublished: true } });
+    
+    // Get recent activities (could be expanded based on what you want to track)
+    const recentExamAttempts = await this.examAttemptRepository.find({
+      relations: ['user', 'course'],
+      order: { createdAt: 'DESC' },
+      take: 5,
+    });
+
+    return {
+      admin,
+      stats: {
+        totalUsers,
+        totalCourses,
+        totalCategories,
+        publishedCourses,
+      },
+      recentActivity: recentExamAttempts.map(attempt => ({
+        id: attempt.id,
+        user: {
+          id: attempt.user.id,
+          name: attempt.user.name,
+        },
+        course: {
+          id: attempt.course.id,
+          title: attempt.course.title,
+        },
+        score: attempt.score,
+        passed: attempt.passed,
+        createdAt: attempt.createdAt,
+      })),
     };
   }
 } 

@@ -1,3 +1,13 @@
+export class PracticeExerciseResponseDto {
+  exerciseNumber: number;
+  id: number;
+  instructions: string;
+  starterCode: string;
+  solution: string;
+  isEnabled: boolean;
+  orderIndex?: number;
+}
+
 export class LessonResponseDto {
   lessonNumber: number;  // This will be 1, 2, 3, etc. for each course
   title: string;
@@ -10,13 +20,7 @@ export class LessonResponseDto {
     explanation: string;
     orderIndex: number;
   }[];
-  practiceExercises?: {
-    exerciseNumber: number;  // Sequential number within the lesson
-    instructions: string;
-    starterCode: string;
-    solution: string;
-    isEnabled: boolean;
-  }[];
+  practiceExercises?: PracticeExerciseResponseDto[];
   createdAt: Date;
   updatedAt: Date;
 } 

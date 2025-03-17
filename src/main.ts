@@ -17,19 +17,27 @@ async function bootstrap() {
   // Set security HTTP headers
   app.use(helmet());
   
-  // Enable CORS with appropriate restrictions
+  // Update CORS configuration
   app.enableCors({
-    origin: process.env.ALLOWED_ORIGINS?.split(',') || 'http://localhost:3000',
-    methods: ['GET', 'POST', 'PUT', 'DELETE'],
+    origin: ['http://localhost:4001', 'http://localhost:3000'], // Add your frontend URL
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
     credentials: true,
+    allowedHeaders: ['Content-Type', 'Authorization'],
   });
   
-  // Rate limiting
+  // List of IPs to whitelist (no rate limiting)
+  const whitelistedIPs = ['127.0.0.1', '::1', '192.168.1.100']; // Add your IP here
+  
+  // Rate limiting with developer bypass
   app.use(
     rateLimit({
-      windowMs: 15 * 60 * 1000, // 15 minutes
-      max: 100, // limit each IP to 100 requests per windowMs
+      windowMs: 15 * 60 * 1000,
+      max: 100,
       message: 'Too many requests from this IP, please try again later',
+      skip: (request, response) => {
+        const clientIP = request.ip;
+        return whitelistedIPs.includes(clientIP);
+      },
     }),
   );
   

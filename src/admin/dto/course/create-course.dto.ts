@@ -1,5 +1,4 @@
-import { IsNotEmpty, IsString, IsEnum, IsArray, IsOptional, IsBoolean, IsNumber, Min, Max, MaxLength, ArrayMaxSize, ValidateNested } from 'class-validator';
-import { Type } from 'class-transformer';
+import { IsNotEmpty, IsString, IsEnum, IsArray, IsOptional, IsBoolean, IsNumber, Min, Max, MaxLength, ArrayMaxSize } from 'class-validator';
 import { DifficultyLevel } from '../../../entities/course.entity';
 
 export class CreateCourseDto {

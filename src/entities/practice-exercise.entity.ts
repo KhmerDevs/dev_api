@@ -30,6 +30,6 @@ export class PracticeExercise {
   @UpdateDateColumn()
   updatedAt: Date;
 
-  @Column({ nullable: true })
+  @Column({ default: 0 })
   orderIndex: number;
 } 

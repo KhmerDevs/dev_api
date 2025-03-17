@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Put, Delete, Param, UseGuards, UseInterceptors, UploadedFile, Query } from '@nestjs/common';
+import { Controller, Get, Post, Body, Put, Delete, Param, UseGuards, UseInterceptors, UploadedFile, Query, Req } from '@nestjs/common';
 import { AdminService } from './admin.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { AdminGuard } from '../auth/guards/admin.guard';
@@ -13,6 +13,7 @@ import { CreateQcmDto } from './dto/qcm/create-qcm.dto';
 import { CreateRoadmapDto } from './dto/roadmap/create-roadmap.dto';
 import { UserRole } from '../entities/user.entity';
 import { CreateQcmBatchDto } from './dto/qcm/create-qcm-batch.dto';
+import { ParseIntPipe } from '@nestjs/common';
 @Controller('admin')
 @UseGuards(JwtAuthGuard, AdminGuard)
 export class AdminController {
@@ -129,7 +130,7 @@ export class AdminController {
 
   @Delete('lessons/:id')
   deleteLesson(@Param('id') id: number) {
-    return this.adminService.deleteLesson(id);
+    return this.adminService.deleteLesson(+id);
   }
 
   @Post('lessons/batch')
@@ -235,5 +236,10 @@ export class AdminController {
   @Get('exam-results/:id')
   getExamResultById(@Param('id') id: number) {
     return this.adminService.getExamResultById(id);
+  }
+
+  @Get('profile')
+  getAdminProfile(@Req() req) {
+    return this.adminService.getAdminProfile(req.user.id);
   }
 } 

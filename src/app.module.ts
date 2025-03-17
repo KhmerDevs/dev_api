@@ -1,5 +1,7 @@
-import { Module, Logger } from '@nestjs/common';
+import { Module, Logger, OnModuleInit } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { InjectDataSource } from '@nestjs/typeorm';
+import { DataSource } from 'typeorm';
 import { AppController } from './app.controller';
 import { databaseConfig } from './config/database.config';
 import { AuthModule } from './auth/auth.module';
@@ -33,7 +35,8 @@ import { ExamAttempt } from './entities/exam-attempt.entity';
         Roadmap,
         Enrollment,
         ExamAttempt
-      ]
+      ],
+      synchronize: process.env.NODE_ENV !== 'production', // Re-enable synchronization
     }),
     AuthModule,
     AdminModule,
@@ -49,4 +52,35 @@ import { ExamAttempt } from './entities/exam-attempt.entity';
     MailService,
   ]
 })
-export class AppModule {}
+export class AppModule implements OnModuleInit {
+  private logger = new Logger('AppModule');
+
+  constructor(
+    @InjectDataSource()
+    private dataSource: DataSource,
+  ) {}
+
+  async onModuleInit() {
+    try {
+      // Update any NULL orderIndex values to 0
+      await this.dataSource.query(`
+        UPDATE practice_exercises 
+        SET "orderIndex" = 0 
+        WHERE "orderIndex" IS NULL
+      `);
+      
+      this.logger.log('Successfully updated NULL orderIndex values to 0');
+      
+      // Now we can set the column to NOT NULL with a default value
+      await this.dataSource.query(`
+        ALTER TABLE practice_exercises 
+        ALTER COLUMN "orderIndex" SET DEFAULT 0,
+        ALTER COLUMN "orderIndex" SET NOT NULL
+      `);
+      
+      this.logger.log('Successfully altered orderIndex column constraints');
+    } catch (error) {
+      this.logger.error(`Failed to update practice_exercises table: ${error.message}`);
+    }
+  }
+}
