@@ -180,20 +180,25 @@ export class AdminService {
   }
 
   async createCourse(createCourseDto: CreateCourseDto) {
-    const category = await this.courseCategoryRepository.findOne({ 
-      where: { id: createCourseDto.categoryId } 
+    const category = await this.courseCategoryRepository.findOne({
+      where: { id: createCourseDto.categoryId },
     });
+
     if (!category) {
-      throw new NotFoundException('Category not found');
+      throw new NotFoundException(`Category with ID ${createCourseDto.categoryId} not found`);
     }
 
     const course = this.courseRepository.create({
       ...createCourseDto,
       category,
-      isPublished: false
     });
 
-    return this.courseRepository.save(course);
+    await this.courseRepository.save(course);
+
+    return this.courseRepository.findOne({
+      where: { id: course.id },
+      relations: ['category']
+    });
   }
 
   async getAllCourses() {
@@ -249,41 +254,32 @@ export class AdminService {
   }
 
   async getCourse(id: number) {
-    const courseWithEnrollments = await this.courseRepository
-      .createQueryBuilder('course')
-      .leftJoinAndSelect('course.category', 'category')
-      .leftJoinAndSelect('course.lessons', 'lessons')
-      .leftJoinAndSelect('lessons.codeExamples', 'codeExamples')
-      .leftJoinAndSelect('lessons.practiceExercises', 'practiceExercises')
-      .leftJoin('course.enrollments', 'enrollment')
-      .addSelect('COUNT(DISTINCT enrollment.id)', 'enrollmentCount')
-      .where('course.id = :id', { id })
-      .groupBy('course.id')
-      .addGroupBy('category.id')
-      .addGroupBy('lessons.id')
-      .addGroupBy('codeExamples.id')
-      .addGroupBy('practiceExercises.id')
-      .getRawAndEntities();
+    const course = await this.courseRepository.findOne({
+      where: { id },
+      relations: ['category', 'lessons', 'qcms'],
+    });
 
-    if (courseWithEnrollments.entities.length === 0) {
-      throw new NotFoundException('Course not found');
+    if (!course) {
+      throw new NotFoundException(`Course with ID ${id} not found`);
     }
 
-    const course = courseWithEnrollments.entities[0];
-    const enrollmentCount = parseInt(courseWithEnrollments.raw[0]?.enrollmentCount) || 0;
-
-    // Sort lessons by orderIndex
-    course.lessons.sort((a, b) => a.orderIndex - b.orderIndex);
-
-    // Transform lessons to have sequential numbers
-    const transformedLessons = course.lessons.map((lesson, index) => 
-      this.transformLessonResponse(lesson, index + 1)
-    );
-
     return {
-      ...course,
-      enrollmentCount,
-      lessons: transformedLessons
+      id: course.id,
+      title: course.title,
+      description: course.description,
+      category: course.category,
+      difficultyLevel: course.difficultyLevel,
+      prerequisites: course.prerequisites,
+      learningObjectives: course.learningObjectives,
+      thumbnailUrl: course.thumbnailUrl,
+      isPublished: course.isPublished,
+      sampleCodes: course.sampleCodes,
+      examDuration: course.examDuration,
+      examPassScore: course.examPassScore,
+      lessons: course.lessons,
+      qcms: course.qcms,
+      createdAt: course.createdAt,
+      updatedAt: course.updatedAt
     };
   }
 

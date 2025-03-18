@@ -73,4 +73,7 @@ export class Course {
 
   @OneToMany(() => Enrollment, enrollment => enrollment.course)
   enrollments: Enrollment[];
+
+  @Column('simple-array', { nullable: true })
+  sampleCodes: string[];
 } 

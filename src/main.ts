@@ -19,7 +19,7 @@ async function bootstrap() {
   
   // Update CORS configuration
   app.enableCors({
-    origin: ['http://localhost:4001', 'http://localhost:3000'], // Add your frontend URL
+    origin: ['http://localhost:4001', 'http://localhost:3000', 'http://localhost:9001'], // Added port 9001
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
     credentials: true,
     allowedHeaders: ['Content-Type', 'Authorization'],

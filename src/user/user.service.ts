@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, ConflictException, ForbiddenException, Logger } from '@nestjs/common';
+import { Injectable, NotFoundException, ConflictException, ForbiddenException, Logger, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { User } from '../entities/user.entity';
@@ -25,6 +25,7 @@ export class UserService {
   ) {}
 
   async getProfile(userId: number) {
+    // Get user basic info
     const user = await this.userRepository.findOne({
       where: { id: userId },
       select: ['id', 'email', 'name', 'role', 'createdAt'],
@@ -34,7 +35,67 @@ export class UserService {
       throw new NotFoundException('User not found');
     }
 
-    return user;
+    // Get enrolled courses with progress
+    const enrollments = await this.enrollmentRepository.find({
+      where: { userId },
+      relations: ['course', 'course.category'],
+      order: { createdAt: 'DESC' }
+    });
+
+    // Get exam history
+    const examAttempts = await this.examAttemptRepository.find({
+      where: { userId },
+      relations: ['course'],
+      order: { createdAt: 'DESC' },
+      take: 5 // Get last 5 exam attempts
+    });
+
+    // Calculate statistics
+    const totalCourses = enrollments.length;
+    const completedCourses = enrollments.filter(e => e.completed).length;
+    const averageProgress = enrollments.length > 0 
+      ? enrollments.reduce((sum, e) => sum + e.progress, 0) / enrollments.length 
+      : 0;
+    const examsPassed = examAttempts.filter(e => e.passed).length;
+
+    return {
+      // Basic Info
+      id: user.id,
+      email: user.email,
+      name: user.name,
+      role: user.role,
+      joinedAt: user.createdAt,
+
+      // Learning Statistics
+      statistics: {
+        totalCoursesEnrolled: totalCourses,
+        completedCourses,
+        coursesInProgress: totalCourses - completedCourses,
+        averageProgress: Math.round(averageProgress),
+        totalExamAttempts: examAttempts.length,
+        examsPassed,
+      },
+
+      // Current Enrollments
+      enrolledCourses: enrollments.map(enrollment => ({
+        id: enrollment.course.id,
+        title: enrollment.course.title,
+        category: enrollment.course.category.name,
+        progress: enrollment.progress,
+        completed: enrollment.completed,
+        enrolledAt: enrollment.createdAt,
+      })),
+
+      // Recent Exam Activity
+      recentExams: examAttempts.map(attempt => ({
+        id: attempt.id,
+        courseId: attempt.course.id,
+        courseTitle: attempt.course.title,
+        score: attempt.score,
+        passed: attempt.passed,
+        attemptedAt: attempt.createdAt
+      }))
+    };
   }
 
   async getEnrolledCourses(userId: number) {
@@ -423,10 +484,48 @@ export class UserService {
     }));
   }
 
+  async getPublishedCourses() {
+    const courses = await this.courseRepository.find({
+      where: { isPublished: true },
+      relations: ['category'],
+      order: { createdAt: 'DESC' }
+    });
+
+    return courses.map(course => ({
+      id: course.id,
+      title: course.title,
+      description: course.description,
+      category: {
+        id: course.category.id,
+        name: course.category.name
+      },
+      difficultyLevel: course.difficultyLevel,
+      thumbnailUrl: course.thumbnailUrl,
+      learningObjectives: course.learningObjectives,
+      prerequisites: course.prerequisites,
+      sampleCodes: course.sampleCodes,
+      examDuration: course.examDuration,
+      examPassScore: course.examPassScore,
+      enrollmentCount: course.enrollments?.length || 0,
+      createdAt: course.createdAt
+    }));
+  }
+
   // Helper method to check if user is enrolled in a course
   private async checkEnrollment(userId: number, courseId: number) {
+    // Convert and validate parameters
+    userId = +userId;
+    courseId = +courseId;
+
+    if (isNaN(userId) || isNaN(courseId)) {
+      throw new BadRequestException('Invalid user ID or course ID');
+    }
+
     const enrollment = await this.enrollmentRepository.findOne({
-      where: { userId, courseId },
+      where: { 
+        userId: userId,
+        courseId: courseId 
+      },
     });
 
     if (!enrollment) {
