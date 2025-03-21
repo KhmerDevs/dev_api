@@ -6,6 +6,12 @@ import { Course } from '../entities/course.entity';
 import { QCM } from '../entities/qcm.entity';
 import { Enrollment } from '../entities/enrollment.entity';
 import { ExamAttempt } from '../entities/exam-attempt.entity';
+import { Lesson } from '../entities/lesson.entity';
+import { PracticeExercise } from '../entities/practice-exercise.entity';
+import { LessonCompletion } from '../entities/lesson-completion.entity';
+import { PracticeExerciseAttempt } from '../entities/practice-exercise-attempt.entity';
+import { UserActivity } from '../entities/user-activity.entity';
+import { ActivityType } from '../entities/user-activity.entity';
 
 @Injectable()
 export class UserService {
@@ -22,6 +28,16 @@ export class UserService {
     private enrollmentRepository: Repository<Enrollment>,
     @InjectRepository(ExamAttempt)
     private examAttemptRepository: Repository<ExamAttempt>,
+    @InjectRepository(Lesson)
+    private lessonRepository: Repository<Lesson>,
+    @InjectRepository(PracticeExercise)
+    private practiceExerciseRepository: Repository<PracticeExercise>,
+    @InjectRepository(LessonCompletion)
+    private lessonCompletionRepository: Repository<LessonCompletion>,
+    @InjectRepository(PracticeExerciseAttempt)
+    private practiceExerciseAttemptRepository: Repository<PracticeExerciseAttempt>,
+    @InjectRepository(UserActivity)
+    private userActivityRepository: Repository<UserActivity>,
   ) {}
 
   async getProfile(userId: number) {
@@ -145,6 +161,30 @@ export class UserService {
       throw new ConflictException('Already enrolled in this course');
     }
 
+    // Get all enrollments for this user
+    const userEnrollments = await this.enrollmentRepository.find({
+      where: { userId },
+    });
+
+    // Get exam attempts that were passed - fix the query
+    const passedExams = await this.examAttemptRepository.find({
+      where: { userId, passed: true },
+      select: ['courseId']
+    });
+
+    // Count unique courseIds in passed exams using JavaScript's Set
+    const uniquePassedCourses = [...new Set(passedExams.map(exam => exam.courseId))].length;
+    
+    // Calculate enrollment limit (base 5 + number of passed courses)
+    const enrollmentLimit = 5 + uniquePassedCourses;
+    
+    // Check if user has reached the limit
+    if (userEnrollments.length >= enrollmentLimit) {
+      throw new ForbiddenException(
+        `You can enroll in a maximum of ${enrollmentLimit} courses. Please complete some of your current courses before enrolling in new ones.`
+      );
+    }
+
     // Create enrollment
     const enrollment = this.enrollmentRepository.create({
       userId,
@@ -159,6 +199,7 @@ export class UserService {
       message: 'Successfully enrolled in course',
       courseId,
       courseTitle: courseExists.title,
+      enrollmentsRemaining: enrollmentLimit - userEnrollments.length - 1
     };
   }
 
@@ -300,6 +341,18 @@ export class UserService {
       );
     }
 
+    // Add activity tracking
+    const activity = this.userActivityRepository.create({
+      userId,
+      courseId,
+      activityType: ActivityType.COMPLETE_EXAM
+    });
+    
+    await this.userActivityRepository.save(activity);
+
+    // Update course progress after exam
+    await this.updateCourseProgress(userId, courseId);
+
     // Return results
     return {
       score,
@@ -396,6 +449,15 @@ export class UserService {
     });
     
     await this.examAttemptRepository.save(examAttempt);
+    
+    // Add activity tracking
+    const activity = this.userActivityRepository.create({
+      userId,
+      courseId,
+      activityType: ActivityType.START_EXAM
+    });
+    
+    await this.userActivityRepository.save(activity);
     
     return {
       attemptId: examAttempt.id,
@@ -509,6 +571,413 @@ export class UserService {
       enrollmentCount: course.enrollments?.length || 0,
       createdAt: course.createdAt
     }));
+  }
+
+  async markLessonViewed(userId: number, courseId: number, lessonId: number, timeSpentSeconds?: number) {
+    // Check if user is enrolled
+    await this.checkEnrollment(userId, courseId);
+    
+    // Check if lesson exists and belongs to course
+    const lesson = await this.lessonRepository.findOne({
+      where: { id: lessonId, courseId }
+    });
+    
+    if (!lesson) {
+      throw new NotFoundException('Lesson not found in this course');
+    }
+    
+    // Find or create lesson completion record
+    let lessonCompletion = await this.lessonCompletionRepository.findOne({
+      where: { userId, lessonId }
+    });
+    
+    if (!lessonCompletion) {
+      lessonCompletion = this.lessonCompletionRepository.create({
+        userId,
+        lessonId,
+        courseId,
+        completed: false,
+        timeSpentSeconds: 0
+      });
+    }
+    
+    // Update last accessed time
+    lessonCompletion.lastAccessedAt = new Date();
+    
+    // Update time spent if provided
+    if (timeSpentSeconds && timeSpentSeconds > 0) {
+      lessonCompletion.timeSpentSeconds += timeSpentSeconds;
+    }
+    
+    await this.lessonCompletionRepository.save(lessonCompletion);
+    
+    // Log user activity
+    const activity = this.userActivityRepository.create({
+      userId,
+      courseId,
+      lessonId,
+      activityType: ActivityType.VIEW_LESSON,
+      timeSpentSeconds
+    });
+    
+    await this.userActivityRepository.save(activity);
+    
+    // Update course progress
+    await this.updateCourseProgress(userId, courseId);
+    
+    return {
+      message: 'Lesson viewed successfully',
+      lessonId,
+      lastAccessedAt: lessonCompletion.lastAccessedAt,
+      timeSpentSeconds: lessonCompletion.timeSpentSeconds
+    };
+  }
+
+  async markLessonCompleted(userId: number, courseId: number, lessonId: number) {
+    // Check if user is enrolled
+    await this.checkEnrollment(userId, courseId);
+    
+    // Check if lesson exists and belongs to course
+    const lesson = await this.lessonRepository.findOne({
+      where: { id: lessonId, courseId }
+    });
+    
+    if (!lesson) {
+      throw new NotFoundException('Lesson not found in this course');
+    }
+    
+    // Find or create lesson completion record
+    let lessonCompletion = await this.lessonCompletionRepository.findOne({
+      where: { userId, lessonId }
+    });
+    
+    if (!lessonCompletion) {
+      lessonCompletion = this.lessonCompletionRepository.create({
+        userId,
+        lessonId,
+        courseId,
+        timeSpentSeconds: 0
+      });
+    }
+    
+    // Mark as completed
+    lessonCompletion.completed = true;
+    lessonCompletion.lastAccessedAt = new Date();
+    
+    await this.lessonCompletionRepository.save(lessonCompletion);
+    
+    // Log user activity
+    const activity = this.userActivityRepository.create({
+      userId,
+      courseId,
+      lessonId,
+      activityType: ActivityType.COMPLETE_LESSON
+    });
+    
+    await this.userActivityRepository.save(activity);
+    
+    // Update course progress
+    await this.updateCourseProgress(userId, courseId);
+    
+    return {
+      message: 'Lesson marked as completed',
+      lessonId,
+      completed: true
+    };
+  }
+
+  async submitPracticeExercise(
+    userId: number, 
+    courseId: number, 
+    lessonId: number, 
+    exerciseId: number, 
+    submittedCode: string
+  ) {
+    // Check if user is enrolled
+    await this.checkEnrollment(userId, courseId);
+    
+    // Check if exercise exists and belongs to the specified lesson
+    const exercise = await this.practiceExerciseRepository.findOne({
+      where: { id: exerciseId, lessonId }
+    });
+    
+    if (!exercise) {
+      throw new NotFoundException('Exercise not found in this lesson');
+    }
+    
+    // Check if solution exists
+    if (!exercise.solution) {
+      throw new BadRequestException('No solution available for this exercise');
+    }
+    
+    if (!submittedCode) {
+      throw new BadRequestException('Submitted code cannot be empty');
+    }
+    
+    // Automatically determine if the code is correct by comparing with the solution
+    // Normalize both codes by removing whitespace, comments, etc.
+    const normalizeCode = (code: string) => {
+      if (!code) return '';
+      return code
+        .replace(/\s+/g, '') // Remove all whitespace
+        .replace(/\/\/.*|\/\*[\s\S]*?\*\//g, '') // Remove comments
+        .toLowerCase(); // Convert to lowercase to ignore case
+    };
+    
+    // Compare the submitted code with the solution
+    const normalizedSubmission = normalizeCode(submittedCode);
+    const normalizedSolution = normalizeCode(exercise.solution);
+    const isCorrect = normalizedSubmission === normalizedSolution;
+    
+    // Create attempt record
+    const attempt = this.practiceExerciseAttemptRepository.create({
+      userId,
+      courseId,
+      lessonId,
+      practiceExerciseId: exerciseId,
+      submittedCode,
+      isCorrect
+    });
+    
+    await this.practiceExerciseAttemptRepository.save(attempt);
+    
+    // Log user activity
+    const activity = this.userActivityRepository.create({
+      userId,
+      courseId,
+      lessonId,
+      exerciseId,
+      activityType: ActivityType.SUBMIT_EXERCISE
+    });
+    
+    await this.userActivityRepository.save(activity);
+    
+    // Update course progress
+    await this.updateCourseProgress(userId, courseId);
+    
+    return {
+      message: isCorrect ? 'Exercise completed successfully!' : 'Exercise solution is incorrect',
+      submissionId: attempt.id,
+      isCorrect,
+      feedback: isCorrect 
+        ? 'Great job! Your solution matches the expected output.' 
+        : 'Try again! Your solution doesn\'t match the expected output.'
+    };
+  }
+
+  private async checkLessonExercisesCompletion(userId: number, courseId: number, lessonId: number) {
+    // Get all exercises for this lesson
+    const exercises = await this.practiceExerciseRepository.find({
+      where: { lessonId }
+    });
+    
+    if (!exercises.length) {
+      return;
+    }
+    
+    // For each exercise, check if user has at least one correct submission
+    const exerciseIds = exercises.map(ex => ex.id);
+    
+    // Get latest attempt for each exercise
+    const latestAttempts = await Promise.all(
+      exerciseIds.map(exerciseId => 
+        this.practiceExerciseAttemptRepository.findOne({
+          where: { userId, practiceExerciseId: exerciseId, isCorrect: true },
+          order: { createdAt: 'DESC' }
+        })
+      )
+    );
+    
+    // If all exercises have at least one correct submission, mark lesson as completed
+    const allCompleted = latestAttempts.every(attempt => attempt !== null);
+    
+    if (allCompleted) {
+      let lessonCompletion = await this.lessonCompletionRepository.findOne({
+        where: { userId, lessonId }
+      });
+      
+      if (!lessonCompletion) {
+        lessonCompletion = this.lessonCompletionRepository.create({
+          userId,
+          lessonId,
+          courseId,
+          timeSpentSeconds: 0
+        });
+      }
+      
+      lessonCompletion.completed = true;
+      lessonCompletion.lastAccessedAt = new Date();
+      
+      await this.lessonCompletionRepository.save(lessonCompletion);
+      
+      // Update course progress
+      await this.updateCourseProgress(userId, courseId);
+    }
+  }
+
+  async getCourseProgress(userId: number, courseId: number) {
+    // Check if user is enrolled
+    const enrollment = await this.checkEnrollment(userId, courseId);
+    
+    // Get all lessons for this course
+    const lessons = await this.lessonRepository.find({
+      where: { courseId },
+      order: { orderIndex: 'ASC' }
+    });
+    
+    if (!lessons.length) {
+      return {
+        courseId,
+        progress: 0,
+        completed: false,
+        lessons: []
+      };
+    }
+    
+    // Get lesson completions for user
+    const lessonCompletions = await this.lessonCompletionRepository.find({
+      where: { userId, courseId }
+    });
+    
+    // Get practice exercise attempts
+    const exerciseAttempts = await this.practiceExerciseAttemptRepository.find({
+      where: { userId, courseId }
+    });
+    
+    // Get all exercises grouped by lesson
+    const exercises = await this.practiceExerciseRepository
+      .createQueryBuilder('exercise')
+      .where('exercise.lessonId IN (:...lessonIds)', { 
+        lessonIds: lessons.map(l => l.id) 
+      })
+      .getMany();
+    
+    // Get all exams for this course
+    const examAttempts = await this.examAttemptRepository.find({
+      where: { userId, courseId },
+      order: { createdAt: 'DESC' }
+    });
+    
+    // Calculate progress per lesson
+    const lessonProgressDetails = lessons.map(lesson => {
+      const completion = lessonCompletions.find(lc => lc.lessonId === lesson.id);
+      
+      const lessonExercises = exercises.filter(ex => ex.lessonId === lesson.id);
+      const lessonExerciseAttempts = exerciseAttempts.filter(
+        ea => ea.lessonId === lesson.id
+      );
+      
+      // Calculate exercise completion
+      let exercisesCompleted = 0;
+      if (lessonExercises.length > 0) {
+        exercisesCompleted = lessonExercises.filter(ex => 
+          lessonExerciseAttempts.some(
+            attempt => attempt.practiceExerciseId === ex.id && attempt.isCorrect
+          )
+        ).length;
+      }
+      
+      // Calculate lesson progress
+      let lessonProgress = 0;
+      
+      if (completion?.completed) {
+        lessonProgress = 100;
+      } else if (completion?.lastAccessedAt) {
+        // If viewed but not completed, count as partial progress
+        lessonProgress = 50;
+        
+        // Add extra progress for completed exercises
+        if (lessonExercises.length > 0) {
+          lessonProgress += (exercisesCompleted / lessonExercises.length) * 50;
+        }
+      }
+      
+      return {
+        lessonId: lesson.id,
+        title: lesson.title,
+        completed: completion?.completed || false,
+        viewed: !!completion?.lastAccessedAt,
+        progress: Math.round(lessonProgress),
+        timeSpentSeconds: completion?.timeSpentSeconds || 0,
+        lastAccessedAt: completion?.lastAccessedAt,
+        exerciseStats: {
+          total: lessonExercises.length,
+          completed: exercisesCompleted
+        }
+      };
+    });
+    
+    // Calculate overall course progress
+    const totalLessons = lessons.length;
+    const completedLessons = lessonProgressDetails.filter(l => l.completed).length;
+    const totalProgress = lessonProgressDetails.reduce((sum, l) => sum + l.progress, 0);
+    const averageProgress = totalLessons > 0 ? totalProgress / totalLessons : 0;
+    
+    // Check if user passed the exam
+    const passedExam = examAttempts.some(ea => ea.passed);
+    
+    // Update enrollment progress
+    enrollment.progress = Math.round(averageProgress);
+    enrollment.completed = passedExam && completedLessons === totalLessons;
+    await this.enrollmentRepository.save(enrollment);
+    
+    return {
+      courseId,
+      progress: Math.round(averageProgress),
+      completed: enrollment.completed,
+      lessonCompletionCount: `${completedLessons}/${totalLessons}`,
+      examStatus: {
+        attempted: examAttempts.length > 0,
+        passed: passedExam,
+        bestScore: examAttempts.length > 0 ? 
+          Math.max(...examAttempts.filter(ea => ea.score !== null).map(ea => ea.score || 0)) : null,
+        attempts: examAttempts.length
+      },
+      lessons: lessonProgressDetails
+    };
+  }
+
+  private async updateCourseProgress(userId: number, courseId: number) {
+    // Get enrollment
+    const enrollment = await this.enrollmentRepository.findOne({
+      where: { userId, courseId }
+    });
+    
+    if (!enrollment) {
+      return;
+    }
+    
+    // Get all lessons
+    const lessons = await this.lessonRepository.find({
+      where: { courseId }
+    });
+    
+    if (!lessons.length) {
+      return;
+    }
+    
+    // Get lesson completions
+    const completions = await this.lessonCompletionRepository.find({
+      where: { userId, courseId }
+    });
+    
+    // Calculate progress percentage
+    const completedLessons = completions.filter(c => c.completed).length;
+    const progress = Math.round((completedLessons / lessons.length) * 100);
+    
+    // Get exam attempts
+    const examAttempts = await this.examAttemptRepository.find({
+      where: { userId, courseId }
+    });
+    
+    // Check if passed exam
+    const passedExam = examAttempts.some(ea => ea.passed);
+    
+    // Update enrollment
+    enrollment.progress = progress;
+    enrollment.completed = passedExam && completedLessons === lessons.length;
+    
+    await this.enrollmentRepository.save(enrollment);
   }
 
   // Helper method to check if user is enrolled in a course

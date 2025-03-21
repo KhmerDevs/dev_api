@@ -19,6 +19,9 @@ import { QCM } from './entities/qcm.entity';
 import { Roadmap } from './entities/roadmap.entity';
 import { Enrollment } from './entities/enrollment.entity';
 import { ExamAttempt } from './entities/exam-attempt.entity';
+import { LessonCompletion } from './entities/lesson-completion.entity';
+import { PracticeExerciseAttempt } from './entities/practice-exercise-attempt.entity';
+import { UserActivity } from './entities/user-activity.entity';
 
 @Module({
   imports: [
@@ -34,7 +37,10 @@ import { ExamAttempt } from './entities/exam-attempt.entity';
         QCM,
         Roadmap,
         Enrollment,
-        ExamAttempt
+        ExamAttempt,
+        LessonCompletion,
+        PracticeExerciseAttempt,
+        UserActivity
       ],
       synchronize: process.env.NODE_ENV !== 'production', // Re-enable synchronization
     }),

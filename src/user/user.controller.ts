@@ -105,4 +105,57 @@ export class UserController {
   getCourseExamHistory(@Req() req, @Param('courseId') courseId: number) {
     return this.userService.getCourseExamHistory(req.user.id, courseId);
   }
+
+  @Post('courses/:courseId/lessons/:lessonId/view')
+  @UseGuards(JwtAuthGuard, UserGuard)
+  markLessonViewed(
+    @Req() req,
+    @Param('courseId', ParseIntPipe) courseId: number,
+    @Param('lessonId', ParseIntPipe) lessonId: number,
+    @Body() body: { timeSpentSeconds?: number }
+  ) {
+    return this.userService.markLessonViewed(
+      req.user.id, 
+      courseId, 
+      lessonId, 
+      body.timeSpentSeconds
+    );
+  }
+
+  @Post('courses/:courseId/lessons/:lessonId/complete')
+  @UseGuards(JwtAuthGuard, UserGuard)
+  markLessonCompleted(
+    @Req() req,
+    @Param('courseId', ParseIntPipe) courseId: number,
+    @Param('lessonId', ParseIntPipe) lessonId: number
+  ) {
+    return this.userService.markLessonCompleted(req.user.id, courseId, lessonId);
+  }
+
+  @Post('courses/:courseId/lessons/:lessonId/exercises/:exerciseId/submit')
+  @UseGuards(JwtAuthGuard, UserGuard)
+  submitPracticeExercise(
+    @Req() req,
+    @Param('courseId', ParseIntPipe) courseId: number,
+    @Param('lessonId', ParseIntPipe) lessonId: number,
+    @Param('exerciseId', ParseIntPipe) exerciseId: number,
+    @Body() body: { submittedCode: string }
+  ) {
+    return this.userService.submitPracticeExercise(
+      req.user.id,
+      courseId,
+      lessonId,
+      exerciseId,
+      body.submittedCode
+    );
+  }
+
+  @Get('courses/:courseId/progress')
+  @UseGuards(JwtAuthGuard, UserGuard)
+  getCourseProgress(
+    @Req() req,
+    @Param('courseId', ParseIntPipe) courseId: number
+  ) {
+    return this.userService.getCourseProgress(req.user.id, courseId);
+  }
 } 
