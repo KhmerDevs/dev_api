@@ -55,62 +55,65 @@ export class UserService {
     const enrollments = await this.enrollmentRepository.find({
       where: { userId },
       relations: ['course', 'course.category'],
-      order: { createdAt: 'DESC' }
     });
 
-    // Get exam history
+    // Get course progress statistics
+    const enrolledCourses = enrollments.map(enrollment => ({
+      id: enrollment.course.id,
+      title: enrollment.course.title,
+      description: enrollment.course.description,
+      categoryId: enrollment.course.categoryId,
+      categoryName: enrollment.course.category?.name,
+      progress: enrollment.progress,
+      completed: enrollment.completed,
+      thumbnailUrl: enrollment.course.thumbnailUrl,
+      backgroundColor: enrollment.course.backgroundColor,
+      enrolledAt: enrollment.createdAt
+    }));
+
+    // Get lesson completion statistics
+    const lessonCompletions = await this.lessonCompletionRepository.find({
+      where: { userId },
+    });
+
+    const completedLessons = lessonCompletions.filter(lc => lc.completed).length;
+    const totalTimeSpent = lessonCompletions.reduce((sum, lc) => sum + lc.timeSpentSeconds, 0);
+
+    // Get practice exercise statistics
+    const exerciseAttempts = await this.practiceExerciseAttemptRepository.find({
+      where: { userId },
+    });
+
+    const completedExercises = exerciseAttempts.filter(ea => ea.isCorrect).length;
+    const totalExerciseAttempts = exerciseAttempts.length;
+
+    // Get exam statistics
     const examAttempts = await this.examAttemptRepository.find({
       where: { userId },
-      relations: ['course'],
-      order: { createdAt: 'DESC' },
-      take: 5 // Get last 5 exam attempts
     });
 
-    // Calculate statistics
-    const totalCourses = enrollments.length;
-    const completedCourses = enrollments.filter(e => e.completed).length;
-    const averageProgress = enrollments.length > 0 
-      ? enrollments.reduce((sum, e) => sum + e.progress, 0) / enrollments.length 
-      : 0;
-    const examsPassed = examAttempts.filter(e => e.passed).length;
+    const passedExams = examAttempts.filter(ea => ea.passed).length;
+    const totalExamAttempts = examAttempts.length;
 
     return {
-      // Basic Info
-      id: user.id,
-      email: user.email,
-      name: user.name,
-      role: user.role,
-      joinedAt: user.createdAt,
-
-      // Learning Statistics
-      statistics: {
-        totalCoursesEnrolled: totalCourses,
-        completedCourses,
-        coursesInProgress: totalCourses - completedCourses,
-        averageProgress: Math.round(averageProgress),
-        totalExamAttempts: examAttempts.length,
-        examsPassed,
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        role: user.role,
+        createdAt: user.createdAt,
       },
-
-      // Current Enrollments
-      enrolledCourses: enrollments.map(enrollment => ({
-        id: enrollment.course.id,
-        title: enrollment.course.title,
-        category: enrollment.course.category.name,
-        progress: enrollment.progress,
-        completed: enrollment.completed,
-        enrolledAt: enrollment.createdAt,
-      })),
-
-      // Recent Exam Activity
-      recentExams: examAttempts.map(attempt => ({
-        id: attempt.id,
-        courseId: attempt.course.id,
-        courseTitle: attempt.course.title,
-        score: attempt.score,
-        passed: attempt.passed,
-        attemptedAt: attempt.createdAt
-      }))
+      enrolledCourses,
+      stats: {
+        totalEnrolledCourses: enrollments.length,
+        completedCourses: enrollments.filter(e => e.completed).length,
+        completedLessons,
+        totalTimeSpentSeconds: totalTimeSpent,
+        completedExercises,
+        totalExerciseAttempts,
+        passedExams,
+        totalExamAttempts,
+      },
     };
   }
 
@@ -557,18 +560,12 @@ export class UserService {
       id: course.id,
       title: course.title,
       description: course.description,
-      category: {
-        id: course.category.id,
-        name: course.category.name
-      },
       difficultyLevel: course.difficultyLevel,
       thumbnailUrl: course.thumbnailUrl,
-      learningObjectives: course.learningObjectives,
-      prerequisites: course.prerequisites,
+      categoryId: course.categoryId,
+      category: course.category,
       sampleCodes: course.sampleCodes,
-      examDuration: course.examDuration,
-      examPassScore: course.examPassScore,
-      enrollmentCount: course.enrollments?.length || 0,
+      backgroundColor: course.backgroundColor,
       createdAt: course.createdAt
     }));
   }
@@ -755,13 +752,36 @@ export class UserService {
     // Update course progress
     await this.updateCourseProgress(userId, courseId);
     
+    // If incorrect, check how many failed attempts user has made
+    let showSolution = false;
+    let failedAttempts = 0;
+    
+    if (!isCorrect) {
+      // Count previous failed attempts for this exercise
+      failedAttempts = await this.practiceExerciseAttemptRepository.count({
+        where: {
+          userId,
+          practiceExerciseId: exerciseId,
+          isCorrect: false
+        }
+      });
+      
+      // Show solution after 3 failed attempts (including this one)
+      showSolution = failedAttempts >= 3;
+    }
+    
     return {
       message: isCorrect ? 'Exercise completed successfully!' : 'Exercise solution is incorrect',
       submissionId: attempt.id,
       isCorrect,
       feedback: isCorrect 
         ? 'Great job! Your solution matches the expected output.' 
-        : 'Try again! Your solution doesn\'t match the expected output.'
+        : 'Try again! Your solution doesn\'t match the expected output.',
+      failedAttempts,
+      ...(showSolution && {
+        solution: exercise.solution,
+        solutionMessage: 'After multiple attempts, here is the correct solution to help you learn:'
+      })
     };
   }
 

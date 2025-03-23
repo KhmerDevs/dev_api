@@ -256,19 +256,20 @@ export class AdminService {
   async getCourse(id: number) {
     const course = await this.courseRepository.findOne({
       where: { id },
-      relations: ['category', 'lessons', 'qcms'],
+      relations: ['category', 'lessons']
     });
 
     if (!course) {
-      throw new NotFoundException(`Course with ID ${id} not found`);
+      throw new NotFoundException('Course not found');
     }
 
     return {
       id: course.id,
       title: course.title,
       description: course.description,
-      category: course.category,
       difficultyLevel: course.difficultyLevel,
+      categoryId: course.categoryId,
+      category: course.category,
       prerequisites: course.prerequisites,
       learningObjectives: course.learningObjectives,
       thumbnailUrl: course.thumbnailUrl,
@@ -276,8 +277,12 @@ export class AdminService {
       sampleCodes: course.sampleCodes,
       examDuration: course.examDuration,
       examPassScore: course.examPassScore,
-      lessons: course.lessons,
-      qcms: course.qcms,
+      backgroundColor: course.backgroundColor,
+      lessons: course.lessons.map(lesson => ({
+        id: lesson.id,
+        title: lesson.title,
+        orderIndex: lesson.orderIndex
+      })).sort((a, b) => a.orderIndex - b.orderIndex),
       createdAt: course.createdAt,
       updatedAt: course.updatedAt
     };

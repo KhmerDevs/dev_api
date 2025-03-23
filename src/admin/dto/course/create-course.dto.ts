@@ -1,4 +1,4 @@
-import { IsNotEmpty, IsString, IsEnum, IsArray, IsOptional, IsBoolean, IsNumber, Min, Max, MaxLength, ArrayMaxSize } from 'class-validator';
+import { IsNotEmpty, IsString, IsEnum, IsArray, IsOptional, IsBoolean, IsNumber, Min, Max, MaxLength, ArrayMaxSize, Matches } from 'class-validator';
 import { DifficultyLevel } from '../../../entities/course.entity';
 
 export class CreateCourseDto {
@@ -60,4 +60,12 @@ export class CreateCourseDto {
   @Min(0)
   @Max(100)
   examPassScore: number;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(20)
+  @Matches(/^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$/, {
+    message: 'Background color must be a valid hex color (e.g., #FF5500)'
+  })
+  backgroundColor?: string;
 } 

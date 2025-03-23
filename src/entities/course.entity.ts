@@ -76,4 +76,7 @@ export class Course {
 
   @Column('simple-array', { nullable: true })
   sampleCodes: string[];
+
+  @Column({ nullable: true, default: '#f0f0f0' })
+  backgroundColor: string;
 } 
