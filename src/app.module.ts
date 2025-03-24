@@ -22,6 +22,7 @@ import { ExamAttempt } from './entities/exam-attempt.entity';
 import { LessonCompletion } from './entities/lesson-completion.entity';
 import { PracticeExerciseAttempt } from './entities/practice-exercise-attempt.entity';
 import { UserActivity } from './entities/user-activity.entity';
+import { DatabaseSeederService } from './shared/database-seeder.service';
 
 @Module({
   imports: [
@@ -47,12 +48,14 @@ import { UserActivity } from './entities/user-activity.entity';
     AuthModule,
     AdminModule,
     UserModule,
+    TypeOrmModule.forFeature([User]),
   ],
   controllers: [AppController],
   providers: [
     FileUploadService,
     MailService,
     Logger,
+    DatabaseSeederService,
   ],
   exports: [
     MailService,
