@@ -140,4 +140,40 @@ export class AuthService {
       },
     };
   }
+
+  async adminLogin(loginDto: LoginDto): Promise<any> {
+    const user = await this.userRepository.findOne({
+      where: { email: loginDto.email },
+    });
+
+    if (!user || user.role !== UserRole.ADMIN) {
+      throw new UnauthorizedException('Invalid credentials');
+    }
+
+    const isPasswordValid = await bcrypt.compare(loginDto.password, user.password);
+    if (!isPasswordValid) {
+      throw new UnauthorizedException('Invalid credentials');
+    }
+    
+    // Log admin login attempts
+    this.logger.log(`Admin login successful: ${user.email} at ${new Date().toISOString()}`);
+    
+    const payload = { 
+      sub: user.id, 
+      email: user.email,
+      role: user.role 
+    };
+    
+    return {
+      access_token: this.jwtService.sign(payload, { 
+        expiresIn: '1h'  // Short expiry for admin tokens
+      }),
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        role: user.role,
+      },
+    };
+  }
 } 
