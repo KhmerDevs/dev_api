@@ -242,4 +242,10 @@ export class AdminController {
   getAdminProfile(@Req() req) {
     return this.adminService.getAdminProfile(req.user.id);
   }
+
+  @Post('roadmaps/:id/publish')
+  @UseGuards(JwtAuthGuard, AdminGuard)
+  async publishRoadmap(@Param('id', ParseIntPipe) id: number) {
+    return this.adminService.publishRoadmap(id);
+  }
 } 

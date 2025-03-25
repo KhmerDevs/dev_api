@@ -23,6 +23,7 @@ import { LessonCompletion } from './entities/lesson-completion.entity';
 import { PracticeExerciseAttempt } from './entities/practice-exercise-attempt.entity';
 import { UserActivity } from './entities/user-activity.entity';
 import { DatabaseSeederService } from './shared/database-seeder.service';
+import { Certificate } from './entities/certificate.entity';
 
 @Module({
   imports: [
@@ -41,7 +42,8 @@ import { DatabaseSeederService } from './shared/database-seeder.service';
         ExamAttempt,
         LessonCompletion,
         PracticeExerciseAttempt,
-        UserActivity
+        UserActivity,
+        Certificate
       ],
       synchronize: process.env.NODE_ENV !== 'production', // Re-enable synchronization
     }),

@@ -29,4 +29,7 @@ export class Roadmap {
 
   @UpdateDateColumn()
   updatedAt: Date;
+
+  @Column({ default: false })
+  published: boolean;
 } 

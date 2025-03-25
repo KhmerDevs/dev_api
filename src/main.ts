@@ -6,6 +6,7 @@ import * as dotenv from 'dotenv';
 import { Logger, ValidationPipe } from '@nestjs/common';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
+import * as path from 'path';
 
 dotenv.config();
 
@@ -70,6 +71,11 @@ async function bootstrap() {
     setHeaders: (res) => {
       res.set('X-Content-Type-Options', 'nosniff');
     },
+  });
+  
+  // Serve static files
+  app.useStaticAssets(path.join(__dirname, '..', 'uploads'), {
+    prefix: '/uploads/',
   });
   
   try {

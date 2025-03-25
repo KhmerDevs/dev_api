@@ -1,31 +1,21 @@
-import { Controller, Get, Post, Body, Param, UseGuards, Req, ParseIntPipe } from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, UseGuards, Request, Query, ParseIntPipe, NotFoundException } from '@nestjs/common';
 import { UserService } from './user.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { UserGuard } from '../auth/guards/user.guard';
 import { EnrollCourseDto } from './dto/enroll-course.dto';
-import { IsArray, IsNotEmpty, ValidateNested, ArrayMinSize } from 'class-validator';
-import { Type } from 'class-transformer';
+import { SubmitExamDto } from './dto/submit-exam.dto';
+import { SubmitPracticeExerciseDto } from './dto/submit-practice-exercise.dto';
+import { MarkLessonViewedDto } from './dto/mark-lesson-viewed.dto';
 import { Public } from '../auth/decorators/public.decorator';
-
-class AnswerDto {
-  @IsNotEmpty()
-  qcmId: number;
-
-  @IsNotEmpty()
-  answer: number;
-}
-
-class SubmitExamDto {
-  @IsArray()
-  @ArrayMinSize(1, { message: 'At least one answer is required' })
-  @ValidateNested({ each: true })
-  @Type(() => AnswerDto)
-  answers: AnswerDto[];
-}
+import { CertificateService } from './service/certificate.service';
+import { ExamService } from './service/exam.service';
 
 @Controller('user')
 export class UserController {
-  constructor(private readonly userService: UserService) {}
+  constructor(
+    private readonly userService: UserService,
+    private readonly certificateService: CertificateService,
+    private readonly examService: ExamService
+  ) {}
 
   @Get('courses/published')
   @Public()
@@ -33,129 +23,184 @@ export class UserController {
     return this.userService.getPublishedCourses();
   }
 
+  @UseGuards(JwtAuthGuard)
   @Get('profile')
-  @UseGuards(JwtAuthGuard, UserGuard)
-  getProfile(@Req() req) {
-    return this.userService.getProfile(req.user.id);
+  getProfile(@Request() req) {
+    return this.userService.getProfile(req.user.userId);
   }
 
+  @UseGuards(JwtAuthGuard)
   @Get('courses')
-  @UseGuards(JwtAuthGuard, UserGuard)
-  getEnrolledCourses(@Req() req) {
-    return this.userService.getEnrolledCourses(req.user.id);
+  getEnrolledCourses(@Request() req) {
+    return this.userService.getEnrolledCourses(req.user.userId);
   }
 
-  @Post('enroll')
-  @UseGuards(JwtAuthGuard, UserGuard)
-  enrollCourse(@Req() req, @Body() enrollCourseDto: EnrollCourseDto) {
-    return this.userService.enrollCourse(req.user.id, enrollCourseDto.courseId);
+  @UseGuards(JwtAuthGuard)
+  @Post('courses/enroll')
+  enrollCourse(@Request() req, @Body() enrollCourseDto: EnrollCourseDto) {
+    return this.userService.enrollCourse(req.user.userId, enrollCourseDto.courseId);
   }
 
+  @UseGuards(JwtAuthGuard)
   @Get('courses/:courseId')
-  @UseGuards(JwtAuthGuard, UserGuard)
-  getCourseDetails(
-    @Req() req, 
-    @Param('courseId', ParseIntPipe) courseId: number
-  ) {
-    return this.userService.getCourseDetails(req.user.id, courseId);
+  getCourseDetails(@Request() req, @Param('courseId', ParseIntPipe) courseId: number) {
+    return this.userService.getCourseDetails(req.user.userId, courseId);
   }
 
+  @UseGuards(JwtAuthGuard)
   @Get('courses/:courseId/exam')
-  @UseGuards(JwtAuthGuard, UserGuard)
-  getExam(@Req() req, @Param('courseId') courseId: number) {
-    return this.userService.getExam(req.user.id, courseId);
+  getExam(@Request() req, @Param('courseId', ParseIntPipe) courseId: number) {
+    return this.userService.getExam(req.user.userId, courseId);
   }
 
+  @UseGuards(JwtAuthGuard)
   @Post('courses/:courseId/exam/submit')
-  @UseGuards(JwtAuthGuard, UserGuard)
   submitExam(
-    @Req() req, 
-    @Param('courseId') courseId: number,
+    @Request() req, 
+    @Param('courseId', ParseIntPipe) courseId: number,
     @Body() submitExamDto: SubmitExamDto
   ) {
-    return this.userService.submitExam(req.user.id, courseId, submitExamDto.answers);
+    return this.userService.submitExam(req.user.userId, courseId, submitExamDto.answers);
   }
-  
+
+  @UseGuards(JwtAuthGuard)
   @Get('courses/:courseId/exam/results')
-  @UseGuards(JwtAuthGuard, UserGuard)
-  getExamResults(@Req() req, @Param('courseId') courseId: number) {
-    return this.userService.getExamResults(req.user.id, courseId);
+  getExamResults(@Request() req, @Param('courseId', ParseIntPipe) courseId: number) {
+    return this.userService.getExamResults(req.user.userId, courseId);
   }
 
+  @UseGuards(JwtAuthGuard)
   @Post('courses/:courseId/exam/start')
-  @UseGuards(JwtAuthGuard, UserGuard)
-  startExam(@Req() req, @Param('courseId') courseId: number) {
-    return this.userService.startExam(req.user.id, courseId);
+  startExam(@Request() req, @Param('courseId', ParseIntPipe) courseId: number) {
+    return this.examService.startExam(req.user.userId, courseId);
   }
 
+  @UseGuards(JwtAuthGuard)
   @Get('courses/:courseId/exam/time-remaining')
-  @UseGuards(JwtAuthGuard, UserGuard)
-  getExamTimeRemaining(@Req() req, @Param('courseId') courseId: number) {
-    return this.userService.getExamTimeRemaining(req.user.id, courseId);
+  getExamTimeRemaining(@Request() req, @Param('courseId', ParseIntPipe) courseId: number) {
+    return this.userService.getExamTimeRemaining(req.user.userId, courseId);
   }
 
-  @Get('exam-history')
-  @UseGuards(JwtAuthGuard, UserGuard)
-  getExamHistory(@Req() req) {
-    return this.userService.getExamHistory(req.user.id);
+  @UseGuards(JwtAuthGuard)
+  @Get('exams/history')
+  getExamHistory(@Request() req) {
+    return this.userService.getExamHistory(req.user.userId);
   }
 
-  @Get('courses/:courseId/exam-history')
-  @UseGuards(JwtAuthGuard, UserGuard)
-  getCourseExamHistory(@Req() req, @Param('courseId') courseId: number) {
-    return this.userService.getCourseExamHistory(req.user.id, courseId);
+  @UseGuards(JwtAuthGuard)
+  @Get('courses/:courseId/exams/history')
+  getCourseExamHistory(@Request() req, @Param('courseId', ParseIntPipe) courseId: number) {
+    return this.userService.getCourseExamHistory(req.user.userId, courseId);
   }
 
+  @UseGuards(JwtAuthGuard)
   @Post('courses/:courseId/lessons/:lessonId/view')
-  @UseGuards(JwtAuthGuard, UserGuard)
   markLessonViewed(
-    @Req() req,
+    @Request() req, 
     @Param('courseId', ParseIntPipe) courseId: number,
     @Param('lessonId', ParseIntPipe) lessonId: number,
-    @Body() body: { timeSpentSeconds?: number }
+    @Body() markLessonViewedDto: MarkLessonViewedDto
   ) {
     return this.userService.markLessonViewed(
-      req.user.id, 
+      req.user.userId, 
       courseId, 
       lessonId, 
-      body.timeSpentSeconds
+      markLessonViewedDto.timeSpentSeconds
     );
   }
 
+  @UseGuards(JwtAuthGuard)
   @Post('courses/:courseId/lessons/:lessonId/complete')
-  @UseGuards(JwtAuthGuard, UserGuard)
   markLessonCompleted(
-    @Req() req,
+    @Request() req, 
     @Param('courseId', ParseIntPipe) courseId: number,
     @Param('lessonId', ParseIntPipe) lessonId: number
   ) {
-    return this.userService.markLessonCompleted(req.user.id, courseId, lessonId);
+    return this.userService.markLessonCompleted(req.user.userId, courseId, lessonId);
   }
 
+  @UseGuards(JwtAuthGuard)
   @Post('courses/:courseId/lessons/:lessonId/exercises/:exerciseId/submit')
-  @UseGuards(JwtAuthGuard, UserGuard)
   submitPracticeExercise(
-    @Req() req,
+    @Request() req, 
     @Param('courseId', ParseIntPipe) courseId: number,
     @Param('lessonId', ParseIntPipe) lessonId: number,
     @Param('exerciseId', ParseIntPipe) exerciseId: number,
-    @Body() body: { submittedCode: string }
+    @Body() submitPracticeExerciseDto: SubmitPracticeExerciseDto
   ) {
     return this.userService.submitPracticeExercise(
-      req.user.id,
-      courseId,
-      lessonId,
-      exerciseId,
-      body.submittedCode
+      req.user.userId, 
+      courseId, 
+      lessonId, 
+      exerciseId, 
+      submitPracticeExerciseDto.submittedCode
     );
   }
 
+  @UseGuards(JwtAuthGuard)
   @Get('courses/:courseId/progress')
-  @UseGuards(JwtAuthGuard, UserGuard)
-  getCourseProgress(
-    @Req() req,
+  getCourseProgress(@Request() req, @Param('courseId', ParseIntPipe) courseId: number) {
+    return this.userService.getCourseProgress(req.user.userId, courseId);
+  }
+
+  @Get('roadmaps')
+  @Public()
+  async getRoadmaps() {
+    return this.userService.getRoadmaps();
+  }
+
+  @Get('roadmaps/:id')
+  @Public()
+  async getRoadmapById(@Param('id', ParseIntPipe) id: number) {
+    return this.userService.getRoadmapById(id);
+  }
+
+  @Get('roadmaps/category/:categoryId')
+  @Public()
+  async getRoadmapsByCategory(@Param('categoryId', ParseIntPipe) categoryId: number) {
+    return this.userService.getRoadmapsByCategory(categoryId);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('courses/:courseId/exam/questions')
+  getExamQuestions(@Request() req, @Param('courseId', ParseIntPipe) courseId: number) {
+    return this.userService.getExamQuestions(req.user.userId, courseId);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('certificates')
+  getUserCertificates(@Request() req) {
+    return this.certificateService.getUserCertificates(req.user.userId);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('certificates/:id')
+  getCertificateById(@Request() req, @Param('id', ParseIntPipe) id: number) {
+    return this.certificateService.getCertificateById(id);
+  }
+
+  @Public()
+  @Get('certificates/verify/:certificateNumber')
+  verifyCertificate(@Param('certificateNumber') certificateNumber: string) {
+    return this.certificateService.verifyCertificate(certificateNumber);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('courses/:courseId/certificate')
+  async generateCertificate(
+    @Request() req, 
     @Param('courseId', ParseIntPipe) courseId: number
   ) {
-    return this.userService.getCourseProgress(req.user.id, courseId);
+    // Get the latest passing exam attempt
+    const latestAttempt = await this.examService.getLatestPassingAttempt(req.user.userId, courseId);
+    if (!latestAttempt) {
+      throw new NotFoundException('No passing exam attempt found');
+    }
+    
+    return this.certificateService.generateCertificate(
+      req.user.userId, 
+      courseId, 
+      latestAttempt.id
+    );
   }
 } 

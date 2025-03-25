@@ -1,4 +1,4 @@
-import { IsString, IsNumber, IsUrl, IsOptional, Min, MaxLength } from 'class-validator';
+import { IsString, IsNumber, IsUrl, IsOptional, Min, MaxLength, IsBoolean } from 'class-validator';
 
 export class CreateRoadmapDto {
   @IsString()
@@ -21,4 +21,8 @@ export class CreateRoadmapDto {
   @MaxLength(500, { message: 'Image URL cannot exceed 500 characters' })
   @IsUrl({}, { message: 'Invalid image URL format' })
   imageUrl: string;
+
+  @IsOptional()
+  @IsBoolean()
+  published?: boolean;
 } 
