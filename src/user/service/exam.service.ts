@@ -9,6 +9,7 @@ import { ActivityType } from '../../entities/user-activity.entity';
 import { EnrollmentService } from './enrollment.service';
 import { CourseProgressService } from './course-progress.service';
 import { CertificateService } from './certificate.service';
+import { Not, IsNull } from 'typeorm';
 
 @Injectable()
 export class ExamService {
@@ -66,112 +67,155 @@ export class ExamService {
     };
   }
 
+  async getCertificateForCourse(userId: number, courseId: number) {
+    return this.certificateService.findExistingCertificate(userId, courseId);
+  }
+
   async submitExam(userId: number, courseId: number, answers: { qcmId: number, answer: number }[]) {
-    // Check enrollment
-    await this.enrollmentService.checkEnrollment(userId, courseId);
-    
-    // Get active exam attempt
+    // Get the current exam attempt
     const examAttempt = await this.examAttemptRepository.findOne({
       where: {
         userId,
         courseId,
         isCompleted: false
-      }
+      },
+      order: { startedAt: 'DESC' }
     });
-    
+
     if (!examAttempt) {
-      throw new BadRequestException('No active exam found');
+      throw new BadRequestException('No active exam attempt found. Please start the exam first.');
     }
-    
-    // Get course and questions
+
+    // Check if exam time has expired
+    const now = new Date();
+    const startTime = examAttempt.startedAt;
+    if (!startTime) {
+      throw new BadRequestException('Exam start time not recorded. Please start a new exam.');
+    }
+
     const course = await this.courseRepository.findOne({
-      where: { id: courseId },
-      relations: ['qcms']
+      where: { id: courseId }
     });
-    
+
     if (!course) {
       throw new NotFoundException('Course not found');
     }
-    
+
+    const timeElapsed = Math.floor((now.getTime() - startTime.getTime()) / 1000); // in seconds
+    if (timeElapsed > course.examDuration * 60) {
+      examAttempt.isCompleted = true;
+      examAttempt.submittedAt = now;
+      examAttempt.durationInSeconds = timeElapsed;
+      await this.examAttemptRepository.save(examAttempt);
+      throw new BadRequestException('Exam time has expired');
+    }
+
+    // Check if the exam is already submitted
+    if (examAttempt.submittedAt) {
+      throw new BadRequestException('This exam has already been submitted');
+    }
+
+    // Get all QCMs for this course
+    const qcms = await this.qcmRepository.find({
+      where: { courseId },
+      order: { orderIndex: 'ASC' }
+    });
+
+    if (qcms.length === 0) {
+      throw new NotFoundException('No questions found for this course');
+    }
+
     // Calculate score
     let correctAnswers = 0;
-    const qcmsMap = new Map(course.qcms.map(q => [q.id, q]));
-    
-    for (const answer of answers) {
-      const qcm = qcmsMap.get(answer.qcmId);
-      if (qcm && qcm.correctAnswer === answer.answer) {
+    const questionResults = [];
+
+    for (const qcm of qcms) {
+      const userAnswer = answers.find(a => a.qcmId === qcm.id);
+      const isCorrect = userAnswer && userAnswer.answer === qcm.correctAnswer;
+      
+      if (isCorrect) {
         correctAnswers++;
       }
+      
+      // Add result for this question
+      questionResults.push({
+        qcmId: qcm.id,
+        questionNumber: qcm.questionNumber,
+        question: qcm.question,
+        userAnswer: userAnswer ? userAnswer.answer : null,
+        correctAnswer: qcm.correctAnswer,
+        isCorrect: isCorrect,
+        explanation: qcm.explanation || null
+      });
     }
-    
-    const totalQuestions = course.qcms.length;
-    const score = totalQuestions > 0 ? (correctAnswers / totalQuestions) * 100 : 0;
+
+    const totalQuestions = qcms.length;
+    const score = (correctAnswers / totalQuestions) * 100;
     const passed = score >= course.examPassScore;
-    
+
     // Update exam attempt
     examAttempt.answers = answers;
     examAttempt.score = score;
     examAttempt.passed = passed;
+    examAttempt.submittedAt = now;
+    examAttempt.durationInSeconds = timeElapsed;
     examAttempt.isCompleted = true;
-    examAttempt.submittedAt = new Date();
-    
-    // Calculate duration
-    if (examAttempt.startedAt) {
-      const durationMs = examAttempt.submittedAt.getTime() - examAttempt.startedAt.getTime();
-      examAttempt.durationInSeconds = Math.floor(durationMs / 1000);
-    }
-    
+
+    // Save the attempt
     await this.examAttemptRepository.save(examAttempt);
-    
-    // Log activity
-    await this.userActivityRepository.save({
+
+    // Create user activity record
+    const activity = this.userActivityRepository.create({
       userId,
       courseId,
+      activityType: ActivityType.COMPLETE_EXAM,
       examId: examAttempt.id,
-      activityType: ActivityType.COMPLETE_EXAM
+      timeSpentSeconds: timeElapsed
     });
-    
-    // Update course progress
-    await this.courseProgressService.updateCourseProgress(userId, courseId);
-    
-    // If the user passed, generate a certificate
+
+    await this.userActivityRepository.save(activity);
+
+    // If passed, update course progress
+    if (passed) {
+      await this.courseProgressService.updateCourseProgress(userId, courseId);
+    }
+
+    // Certificate handling - Check if a certificate already exists
+    let certificate = null;
     if (passed) {
       try {
-        const certificate = await this.certificateService.generateCertificate(
-          userId, 
-          courseId, 
-          examAttempt.id
-        );
+        // First check if user already has a certificate for this course
+        certificate = await this.getCertificateForCourse(userId, courseId);
         
-        // Add certificate info to the response
-        return {
-          id: examAttempt.id,
-          score,
-          correctAnswers,
-          totalQuestions,
-          passed,
-          passScore: course.examPassScore,
-          message: 'Congratulations! You passed the exam.',
-          certificate: {
-            id: certificate.id,
-            certificateNumber: certificate.certificateNumber,
-            pdfUrl: certificate.pdfUrl
-          }
-        };
+        // If no existing certificate, generate one
+        if (!certificate) {
+          this.logger.log(`Generating new certificate for userId ${userId}, courseId ${courseId}`);
+          certificate = await this.certificateService.generateCertificate(userId, courseId, examAttempt.id);
+        } else {
+          this.logger.log(`Using existing certificate for userId ${userId}, courseId ${courseId}`);
+        }
       } catch (error) {
-        this.logger.error(`Failed to generate certificate: ${error.message}`);
-        // Continue without certificate if generation fails
+        this.logger.error(`Failed to handle certificate: ${error.message}`);
+        // Continue without certificate
       }
     }
-    
+
+    // Return detailed result
     return {
-      id: examAttempt.id,
+      examId: examAttempt.id,
       score,
+      passingScore: course.examPassScore,
+      passed,
       correctAnswers,
       totalQuestions,
-      passed,
-      passScore: course.examPassScore,
-      message: passed ? 'Congratulations! You passed the exam.' : 'You did not pass the exam. Try again after reviewing the course material.'
+      durationInSeconds: timeElapsed,
+      questionDetails: questionResults,
+      certificate: certificate ? {
+        id: certificate.id,
+        certificateNumber: certificate.certificateNumber,
+        pdfUrl: certificate.pdfUrl,
+        issuedAt: certificate.issuedAt
+      } : null
     };
   }
 
@@ -205,6 +249,8 @@ export class ExamService {
   }
 
   async startExam(userId: number, courseId: number) {
+    this.logger.log(`Starting exam for user ${userId} in course ${courseId}`);
+    
     // Check enrollment
     await this.enrollmentService.checkEnrollment(userId, courseId);
     
@@ -217,39 +263,37 @@ export class ExamService {
       throw new NotFoundException('Course not found');
     }
     
-    // Check if there's an active exam attempt
-    const activeAttempt = await this.examAttemptRepository.findOne({
-      where: {
+    // First, clean up any stale attempts that haven't been completed
+    await this.examAttemptRepository.update(
+      {
         userId,
         courseId,
         isCompleted: false
+      },
+      {
+        isCompleted: true
       }
-    });
+    );
     
-    if (activeAttempt) {
-      return {
-        message: 'You already have an active exam attempt',
-        examId: activeAttempt.id,
-        startedAt: activeAttempt.startedAt,
-        examDuration: course.examDuration
-      };
-    }
+    this.logger.log(`Cleaned up stale attempts for user ${userId} in course ${courseId}`);
     
     // Create new exam attempt
+    const now = new Date();
     const examAttempt = this.examAttemptRepository.create({
       userId,
       courseId,
-      startedAt: new Date(),
+      startedAt: now,
       isCompleted: false
     });
     
-    await this.examAttemptRepository.save(examAttempt);
+    const savedAttempt = await this.examAttemptRepository.save(examAttempt);
+    this.logger.log(`Created new exam attempt with ID ${savedAttempt.id} at ${savedAttempt.startedAt}`);
     
     // Record activity
     const activity = this.userActivityRepository.create({
       userId,
       courseId,
-      examId: examAttempt.id,
+      examId: savedAttempt.id,
       activityType: ActivityType.START_EXAM
     });
     
@@ -257,13 +301,15 @@ export class ExamService {
     
     return {
       message: 'Exam started successfully',
-      examId: examAttempt.id,
-      startedAt: examAttempt.startedAt,
+      examId: savedAttempt.id,
+      startedAt: savedAttempt.startedAt,
       examDuration: course.examDuration
     };
   }
 
   async getExamTimeRemaining(userId: number, courseId: number) {
+    this.logger.log(`Getting exam time remaining for user ${userId} in course ${courseId}`);
+    
     // Check if enrolled
     await this.enrollmentService.checkEnrollment(userId, courseId);
     
@@ -276,70 +322,113 @@ export class ExamService {
       throw new NotFoundException('Course not found');
     }
     
-    // Find the latest attempt
+    // Find active attempt - with simplified query
     const examAttempt = await this.examAttemptRepository.findOne({
       where: { 
         userId, 
         courseId, 
-        isCompleted: false 
+        isCompleted: false
       },
-      order: { startedAt: 'DESC' }
+      order: { 
+        createdAt: 'DESC' 
+      }
     });
     
-    if (!examAttempt || !examAttempt.startedAt) {
+    this.logger.log(`Found exam attempt: ${JSON.stringify(examAttempt || 'No attempt found')}`);
+    
+    if (!examAttempt) {
       throw new NotFoundException('No active exam found. Please start the exam first.');
+    }
+    
+    if (!examAttempt.startedAt) {
+      // If we somehow have an attempt with no start time, fix it
+      examAttempt.startedAt = new Date();
+      await this.examAttemptRepository.save(examAttempt);
+      this.logger.warn(`Fixed missing start time for exam attempt ${examAttempt.id}`);
     }
     
     const startTime = new Date(examAttempt.startedAt);
     const currentTime = new Date();
-    const elapsedMinutes = (currentTime.getTime() - startTime.getTime()) / (1000 * 60);
-    const remainingMinutes = Math.max(0, course.examDuration - elapsedMinutes);
+    const elapsedSeconds = (currentTime.getTime() - startTime.getTime()) / 1000;
+    const remainingSeconds = Math.max(0, course.examDuration * 60 - elapsedSeconds);
+    
+    this.logger.log(`Time calculation: Started at ${startTime}, elapsed ${elapsedSeconds} seconds, remaining ${remainingSeconds} seconds`);
+    
+    // If time has expired, mark the attempt as completed
+    if (remainingSeconds <= 0) {
+      examAttempt.isCompleted = true;
+      await this.examAttemptRepository.save(examAttempt);
+      throw new BadRequestException('Exam time has expired');
+    }
     
     return {
       attemptId: examAttempt.id,
       startedAt: examAttempt.startedAt,
-      timeRemainingMinutes: remainingMinutes,
-      timeRemainingSeconds: Math.floor(remainingMinutes * 60)
+      timeRemainingMinutes: Math.floor(remainingSeconds / 60),
+      timeRemainingSeconds: Math.floor(remainingSeconds),
+      examDuration: course.examDuration
     };
   }
 
   async getExamHistory(userId: number) {
     const examAttempts = await this.examAttemptRepository.find({
-      where: { userId },
+      where: { userId, isCompleted: true },
       relations: ['course'],
       order: { createdAt: 'DESC' }
     });
+
+    // Get all relevant course IDs from attempts
+    const courseIds = [...new Set(examAttempts.map(attempt => attempt.courseId))];
     
-    return examAttempts.map(attempt => ({
-      id: attempt.id,
-      courseId: attempt.courseId,
-      courseTitle: attempt.course.title,
-      score: attempt.score,
-      passed: attempt.passed,
-      startedAt: attempt.startedAt,
-      submittedAt: attempt.submittedAt,
-      durationInSeconds: attempt.durationInSeconds,
-      createdAt: attempt.createdAt
+    // Get certificates for all these courses in one query
+    const certificates = await this.certificateService.getUserCertificatesForCourses(userId, courseIds);
+
+    // Map attempt data and add certificate information if available
+    return Promise.all(examAttempts.map(async (attempt) => {
+      const certificate = certificates.find(cert => cert.courseId === attempt.courseId);
+      
+      return {
+        examId: attempt.id,
+        courseId: attempt.courseId,
+        courseTitle: attempt.course.title,
+        score: attempt.score,
+        passed: attempt.passed,
+        attemptDate: attempt.createdAt,
+        durationInSeconds: attempt.durationInSeconds,
+        certificate: certificate ? {
+          id: certificate.id,
+          certificateNumber: certificate.certificateNumber,
+          pdfUrl: certificate.pdfUrl,
+          issuedAt: certificate.issuedAt
+        } : null
+      };
     }));
   }
 
   async getCourseExamHistory(userId: number, courseId: number) {
     // Check if enrolled
     await this.enrollmentService.checkEnrollment(userId, courseId);
-    
+
     const examAttempts = await this.examAttemptRepository.find({
-      where: { userId, courseId },
+      where: { userId, courseId, isCompleted: true },
       order: { createdAt: 'DESC' }
     });
-    
+
+    // Get certificate for this course
+    const certificate = await this.getCertificateForCourse(userId, courseId);
+
     return examAttempts.map(attempt => ({
-      id: attempt.id,
+      examId: attempt.id,
       score: attempt.score,
       passed: attempt.passed,
-      startedAt: attempt.startedAt,
-      submittedAt: attempt.submittedAt,
+      attemptDate: attempt.createdAt,
       durationInSeconds: attempt.durationInSeconds,
-      createdAt: attempt.createdAt
+      certificate: certificate && attempt.passed ? {
+        id: certificate.id,
+        certificateNumber: certificate.certificateNumber,
+        pdfUrl: certificate.pdfUrl,
+        issuedAt: certificate.issuedAt
+      } : null
     }));
   }
 

@@ -1,9 +1,10 @@
 import { Module, Logger, OnModuleInit } from '@nestjs/common';
+import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { InjectDataSource } from '@nestjs/typeorm';
-import { DataSource } from 'typeorm';
+import { DataSource, DataSourceOptions } from 'typeorm';
 import { AppController } from './app.controller';
-import { databaseConfig } from './config/database.config';
+import { databaseConfig, firebaseConfig, authConfig } from './config/configuration';
 import { AuthModule } from './auth/auth.module';
 import { AdminModule } from './admin/admin.module';
 import { UserModule } from './user/user.module';
@@ -24,33 +25,67 @@ import { PracticeExerciseAttempt } from './entities/practice-exercise-attempt.en
 import { UserActivity } from './entities/user-activity.entity';
 import { DatabaseSeederService } from './shared/database-seeder.service';
 import { Certificate } from './entities/certificate.entity';
+import { ThrottlerModule } from '@nestjs/throttler';
+import { SECURITY_CONSTANTS } from './constants/app.constants';
+import * as Joi from 'joi';
+
 
 @Module({
   imports: [
-    TypeOrmModule.forRoot({
-      ...databaseConfig,
-      entities: [
-        User, 
-        CourseCategory, 
-        Course, 
-        Lesson, 
-        CodeExample, 
-        PracticeExercise,
-        QCM,
-        Roadmap,
-        Enrollment,
-        ExamAttempt,
-        LessonCompletion,
-        PracticeExerciseAttempt,
-        UserActivity,
-        Certificate
-      ],
-      synchronize: process.env.NODE_ENV !== 'production', // Re-enable synchronization
+    ConfigModule.forRoot({
+      isGlobal: true,
+      load: [databaseConfig, firebaseConfig, authConfig],
+      validationSchema: Joi.object({
+        POSTGRES_HOST: Joi.string().required(),
+        POSTGRES_PORT: Joi.number().required(),
+        POSTGRES_USER: Joi.string().required(),
+        POSTGRES_PASSWORD: Joi.string().required(),
+        POSTGRES_DB: Joi.string().required(),
+        JWT_SECRET: Joi.string().required(),
+        // Add other environment variables validation
+      }),
     }),
+    ThrottlerModule.forRoot([{
+      ttl: Math.floor(SECURITY_CONSTANTS.RATE_LIMIT.windowMs / 1000),
+      limit: SECURITY_CONSTANTS.RATE_LIMIT.max,
+    }]),
+    TypeOrmModule.forRootAsync({
+      imports: [ConfigModule],
+      inject: [ConfigService],
+      useFactory: (configService: ConfigService): DataSourceOptions => {
+        return {
+          type: 'postgres',
+          host: configService.get<string>('database.host'),
+          port: configService.get<number>('database.port'),
+          username: configService.get<string>('database.username'),
+          password: configService.get<string>('database.password'),
+          database: configService.get<string>('database.database'),
+          entities: [
+            User,
+            CourseCategory,
+            Course,
+            Lesson,
+            CodeExample,
+            PracticeExercise,
+            QCM,
+            Roadmap,
+            Enrollment,
+            ExamAttempt,
+            LessonCompletion,
+            PracticeExerciseAttempt,
+            UserActivity,
+            Certificate,
+          ],
+          synchronize: process.env.NODE_ENV !== 'production',
+          autoLoadEntities: true,
+          logging: process.env.NODE_ENV !== 'production',
+        } as DataSourceOptions;
+      },
+    }),
+    TypeOrmModule.forFeature([User]),
     AuthModule,
     AdminModule,
     UserModule,
-    TypeOrmModule.forFeature([User]),
   ],
   controllers: [AppController],
   providers: [

@@ -20,6 +20,7 @@ import { PracticeExerciseAttempt } from '../entities/practice-exercise-attempt.e
 import { UserActivity } from '../entities/user-activity.entity';
 import { Roadmap } from '../entities/roadmap.entity';
 import { Certificate } from '../entities/certificate.entity';
+import { FirebaseStorageService } from '../shared/firebase-storage.service';
 
 @Module({
   imports: [
@@ -47,6 +48,7 @@ import { Certificate } from '../entities/certificate.entity';
     LessonService,
     RoadmapService,
     CertificateService,
+    FirebaseStorageService,
   ],
 })
 export class UserModule {} 

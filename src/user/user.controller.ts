@@ -72,7 +72,7 @@ export class UserController {
   @UseGuards(JwtAuthGuard)
   @Post('courses/:courseId/exam/start')
   startExam(@Request() req, @Param('courseId', ParseIntPipe) courseId: number) {
-    return this.examService.startExam(req.user.userId, courseId);
+    return this.userService.startExam(req.user.userId, courseId);
   }
 
   @UseGuards(JwtAuthGuard)

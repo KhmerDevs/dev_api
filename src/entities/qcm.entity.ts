@@ -15,6 +15,9 @@ export class QCM {
   @Column()
   correctAnswer: number; // Index of the correct answer in options array
 
+  @Column({ nullable: true })
+  explanation: string;
+
   @Column()
   orderIndex: number;
 
