@@ -1,4 +1,24 @@
 import { registerAs } from '@nestjs/config';
+import * as Joi from 'joi';
+
+export const configValidationSchema = Joi.object({
+  NODE_ENV: Joi.string().valid('development', 'production', 'test').required(),
+  PORT: Joi.number().default(3000),
+  DATABASE_URL: Joi.string().required(),
+  JWT_SECRET: Joi.string().required().min(32),
+  JWT_EXPIRATION: Joi.string().default('1d'),
+  REDIS_URL: Joi.string().required(),
+  FIREBASE_ADMIN_PROJECT_ID: Joi.string().required(),
+  // Add other environment variables validation
+});
+
+export const appConfig = registerAs('app', () => ({
+  env: process.env.NODE_ENV,
+  port: parseInt(process.env.PORT, 10),
+  apiVersion: process.env.API_VERSION,
+  jwtSecret: process.env.JWT_SECRET,
+  jwtExpiration: process.env.JWT_EXPIRATION,
+}));
 
 export const databaseConfig = registerAs('database', () => ({
   host: process.env.POSTGRES_HOST,

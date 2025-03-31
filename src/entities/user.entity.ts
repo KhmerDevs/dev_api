@@ -1,6 +1,10 @@
 import { Entity, Column, PrimaryGeneratedColumn, CreateDateColumn, UpdateDateColumn, OneToMany } from 'typeorm';
 import { Exclude } from 'class-transformer';
 import { Enrollment } from './enrollment.entity';
+import { ExamAttempt } from './exam-attempt.entity';
+import { LessonCompletion } from './lesson-completion.entity';
+import { UserActivity } from './user-activity.entity';
+import { Certificate } from './certificate.entity';
 
 export enum UserRole {
   USER = 'user',
@@ -50,6 +54,36 @@ export class User {
   @Column({ default: false })
   isVerified: boolean;
 
-  @OneToMany(() => Enrollment, enrollment => enrollment.user)
+  @OneToMany(() => Enrollment, enrollment => enrollment.user, {
+    cascade: true,
+    onDelete: 'CASCADE'
+  })
   enrollments: Enrollment[];
+
+  @OneToMany(() => ExamAttempt, attempt => attempt.user, {
+    cascade: true,
+    onDelete: 'CASCADE'
+  })
+  examAttempts: ExamAttempt[];
+
+  @OneToMany(() => LessonCompletion, completion => completion.user, {
+    cascade: true,
+    onDelete: 'CASCADE'
+  })
+  lessonCompletions: LessonCompletion[];
+
+  @OneToMany(() => UserActivity, activity => activity.user, {
+    cascade: true,
+    onDelete: 'CASCADE'
+  })
+  activities: UserActivity[];
+
+  @OneToMany(() => Certificate, certificate => certificate.user, {
+    cascade: true,
+    onDelete: 'CASCADE'
+  })
+  certificates: Certificate[];
+
+  @Column({ type: 'timestamp', nullable: true })
+  lastLoginAt: Date;
 } 

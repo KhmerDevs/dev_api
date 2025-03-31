@@ -14,11 +14,17 @@ import { CreateRoadmapDto } from './dto/roadmap/create-roadmap.dto';
 import { UserRole } from '../entities/user.entity';
 import { CreateQcmBatchDto } from './dto/qcm/create-qcm-batch.dto';
 import { ParseIntPipe } from '@nestjs/common';
+import { EmailAdminService } from './service/email-admin.service';
+import { EmailMonitoringService } from './service/email-monitoring.service';
+import { EmailStatus, EmailType } from '../entities/email-log.entity';
+
 @Controller('admin')
 @UseGuards(JwtAuthGuard, AdminGuard)
 export class AdminController {
   constructor(
     private readonly adminService: AdminService,
+    private readonly emailAdminService: EmailAdminService,
+    private readonly emailMonitoringService: EmailMonitoringService,
   ) {}
 
   @Get('users')
@@ -247,5 +253,72 @@ export class AdminController {
   @UseGuards(JwtAuthGuard, AdminGuard)
   async publishRoadmap(@Param('id', ParseIntPipe) id: number) {
     return this.adminService.publishRoadmap(id);
+  }
+
+  @Post('courses/:courseId/announce')
+  async sendCourseAnnouncement(
+    @Param('courseId', ParseIntPipe) courseId: number,
+    @Body() body: { subject: string; message: string }
+  ) {
+    return this.emailAdminService.sendCourseAnnouncement(
+      courseId,
+      body.subject,
+      body.message
+    );
+  }
+
+  @Post('announce')
+  async sendGeneralAnnouncement(
+    @Body() body: { subject: string; message: string; role?: string }
+  ) {
+    return this.emailAdminService.sendGeneralAnnouncement(
+      body.subject,
+      body.message,
+      { role: body.role }
+    );
+  }
+
+  @Post('courses/:courseId/users/:userId/congratulate')
+  async sendCompletionCongratulations(
+    @Param('courseId', ParseIntPipe) courseId: number,
+    @Param('userId', ParseIntPipe) userId: number
+  ) {
+    return this.emailAdminService.sendCourseCompletionCongratulations(
+      userId,
+      courseId
+    );
+  }
+
+  @Get('email-logs')
+  async getEmailLogs(
+    @Query('status') status?: EmailStatus,
+    @Query('type') type?: EmailType,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+    @Query('courseId') courseId?: number,
+    @Query('page') page?: number,
+    @Query('limit') limit?: number,
+  ) {
+    return this.emailMonitoringService.getEmailLogs({
+      status,
+      type,
+      startDate: startDate ? new Date(startDate) : undefined,
+      endDate: endDate ? new Date(endDate) : undefined,
+      courseId,
+      page,
+      limit,
+    });
+  }
+
+  @Get('email-stats')
+  async getEmailStats(
+    @Query('days') days?: number
+  ) {
+    return this.emailMonitoringService.getEmailStats(days);
+  }
+
+  @Get('failed-emails')
+  async getFailedEmails() {
+    return this.emailMonitoringService.getFailedEmails();
   }
 } 

@@ -15,5 +15,5 @@ export class SubmitExamDto {
   @IsArray()
   @ValidateNested({ each: true })
   @Type(() => AnswerDto)
-  answers: AnswerDto[];
+  answers: { qcmId: number; answer: number }[];
 } 

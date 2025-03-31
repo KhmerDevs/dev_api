@@ -28,6 +28,8 @@ import { Certificate } from './entities/certificate.entity';
 import { ThrottlerModule } from '@nestjs/throttler';
 import { SECURITY_CONSTANTS } from './constants/app.constants';
 import * as Joi from 'joi';
+import { EmailLog } from './entities/email-log.entity';
+import { RedisService } from './shared/redis.service';
 
 
 @Module({
@@ -75,6 +77,7 @@ import * as Joi from 'joi';
             PracticeExerciseAttempt,
             UserActivity,
             Certificate,
+            EmailLog,
           ],
           synchronize: process.env.NODE_ENV !== 'production',
           autoLoadEntities: true,
@@ -82,7 +85,7 @@ import * as Joi from 'joi';
         } as DataSourceOptions;
       },
     }),
-    TypeOrmModule.forFeature([User]),
+    TypeOrmModule.forFeature([User, EmailLog]),
     AuthModule,
     AdminModule,
     UserModule,
@@ -93,9 +96,12 @@ import * as Joi from 'joi';
     MailService,
     Logger,
     DatabaseSeederService,
+    RedisService
   ],
   exports: [
     MailService,
+    TypeOrmModule,
+    RedisService
   ]
 })
 export class AppModule implements OnModuleInit {

@@ -1,13 +1,22 @@
-import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, CreateDateColumn } from 'typeorm';
+import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, CreateDateColumn, OneToMany, JoinColumn } from 'typeorm';
 import { User } from './user.entity';
 import { Course } from './course.entity';
+import { Certificate } from './certificate.entity';
+
+export enum ExamAttemptStatus {
+  PENDING = 'PENDING',
+  COMPLETED = 'COMPLETED',
+  FLAGGED = 'FLAGGED',
+  EXPIRED = 'EXPIRED'
+}
 
 @Entity('exam_attempts')
 export class ExamAttempt {
   @PrimaryGeneratedColumn()
   id: number;
 
-  @ManyToOne(() => User)
+  @ManyToOne(() => User, user => user.examAttempts, { onDelete: 'CASCADE' })
+  @JoinColumn({ name: 'userId' })
   user: User;
 
   @Column()
@@ -42,4 +51,17 @@ export class ExamAttempt {
 
   @Column({ nullable: true })
   durationInSeconds: number;
+
+  @OneToMany(() => Certificate, certificate => certificate.examAttempt, {
+    cascade: true,
+    onDelete: 'CASCADE'
+  })
+  certificates: Certificate[];
+
+  @Column({
+    type: 'enum',
+    enum: ExamAttemptStatus,
+    default: ExamAttemptStatus.PENDING
+  })
+  status: ExamAttemptStatus;
 } 

@@ -18,6 +18,10 @@ import { QCM } from '../entities/qcm.entity';
 import { Roadmap } from '../entities/roadmap.entity';
 import { ExamAttempt } from '../entities/exam-attempt.entity';
 import { FileUploadService } from '../shared/file-upload.service';
+import { EmailAdminService } from './service/email-admin.service';
+import { MailService } from '../shared/mail.service';
+import { EmailLog } from '../entities/email-log.entity';
+import { EmailMonitoringService } from './service/email-monitoring.service';
 
 @Module({
   imports: [
@@ -30,7 +34,8 @@ import { FileUploadService } from '../shared/file-upload.service';
       PracticeExercise,
       QCM,
       Roadmap,
-      ExamAttempt
+      ExamAttempt,
+      EmailLog,
     ]),
   ],
   controllers: [AdminController],
@@ -42,7 +47,10 @@ import { FileUploadService } from '../shared/file-upload.service';
     LessonAdminService,
     ExamAdminService,
     RoadmapAdminService,
-    FileUploadService
+    FileUploadService,
+    EmailAdminService,
+    MailService,
+    EmailMonitoringService
   ],
 })
 export class AdminModule {} 

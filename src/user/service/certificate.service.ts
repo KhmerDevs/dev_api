@@ -154,13 +154,16 @@ export class CertificateService {
             const fileName = `certificate_${certificate.id}_${Date.now()}.pdf`;
             
             // Upload to Firebase Storage
-            const downloadUrl = await this.firebaseStorageService.uploadFile(
+            const pdfUrl = await this.firebaseStorageService.uploadFile(
               pdfBuffer,
               fileName,
-              'certificates'
+              {
+                folderPath: 'certificates',
+                mimeType: 'application/pdf'
+              }
             );
             
-            resolve(downloadUrl);
+            resolve(pdfUrl);
           } catch (error) {
             reject(error);
           }

@@ -53,14 +53,24 @@ export class UserController {
     return this.userService.getExam(req.user.userId, courseId);
   }
 
+  @Post('exam/submit/:courseId')
   @UseGuards(JwtAuthGuard)
-  @Post('courses/:courseId/exam/submit')
-  submitExam(
-    @Request() req, 
-    @Param('courseId', ParseIntPipe) courseId: number,
+  async submitExam(
+    @Request() req,
+    @Param('courseId') courseId: number,
     @Body() submitExamDto: SubmitExamDto
   ) {
-    return this.userService.submitExam(req.user.userId, courseId, submitExamDto.answers);
+    const examAttempt = await this.userService.getActiveExamAttempt(
+      req.user.userId,
+      courseId
+    );
+    
+    return this.userService.submitExam(
+      req.user.userId,
+      courseId,
+      examAttempt.id,
+      submitExamDto.answers
+    );
   }
 
   @UseGuards(JwtAuthGuard)

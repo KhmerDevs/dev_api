@@ -9,10 +9,14 @@ import { User } from '../entities/user.entity';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { GoogleStrategy } from './strategies/google.strategy';
 import { MailService } from '../shared/mail.service';
+import { EmailLog } from '../entities/email-log.entity';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([User]),
+    TypeOrmModule.forFeature([
+      User,
+      EmailLog,
+    ]),
     PassportModule,
     JwtModule.registerAsync({
       imports: [ConfigModule],

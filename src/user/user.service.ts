@@ -100,8 +100,13 @@ export class UserService {
     return this.examService.getExam(userId, courseId);
   }
 
-  async submitExam(userId: number, courseId: number, answers: { qcmId: number, answer: number }[]) {
-    return this.examService.submitExam(userId, courseId, answers);
+  async submitExam(
+    userId: number, 
+    courseId: number, 
+    examAttemptId: number, 
+    answers: { qcmId: number; answer: number }[]
+  ) {
+    return this.examService.submitExam(userId, courseId, examAttemptId, answers);
   }
 
   async getExamResults(userId: number, courseId: number) {
@@ -180,5 +185,13 @@ export class UserService {
 
   async generateCertificate(userId: number, courseId: number, examAttemptId: number) {
     return this.certificateService.generateCertificate(userId, courseId, examAttemptId);
+  }
+
+  async getActiveExamAttempt(userId: number, courseId: number) {
+    const attempt = await this.examService.getActiveExamAttempt(userId, courseId);
+    if (!attempt) {
+      throw new NotFoundException('No active exam attempt found');
+    }
+    return attempt;
   }
 } 

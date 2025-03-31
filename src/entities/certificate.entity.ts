@@ -11,7 +11,7 @@ export class Certificate {
   @Column()
   userId: number;
 
-  @ManyToOne(() => User)
+  @ManyToOne(() => User, user => user.certificates)
   @JoinColumn({ name: 'userId' })
   user: User;
 
@@ -25,7 +25,7 @@ export class Certificate {
   @Column()
   examAttemptId: number;
 
-  @ManyToOne(() => ExamAttempt)
+  @ManyToOne(() => ExamAttempt, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'examAttemptId' })
   examAttempt: ExamAttempt;
 
