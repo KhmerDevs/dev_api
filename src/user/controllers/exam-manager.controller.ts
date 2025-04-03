@@ -1,4 +1,4 @@
-import { Controller, Post, Body, Param, Request, UseGuards } from '@nestjs/common';
+import { Controller, Post, Body, Param, Request, UseGuards, ForbiddenException } from '@nestjs/common';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { ExamManagerService } from '../service/exam-manager.service';
 import { SubmitExamDto } from '../dto/submit-exam.dto';
@@ -7,6 +7,17 @@ import { SubmitExamDto } from '../dto/submit-exam.dto';
 @UseGuards(JwtAuthGuard)
 export class ExamManagerController {
   constructor(private readonly examManagerService: ExamManagerService) {}
+
+  @Post('start/:courseId')
+  async startExam(
+    @Request() req,
+    @Param('courseId') courseId: number
+  ) {
+    return this.examManagerService.validateAndStartExam(
+      req.user.userId,
+      courseId
+    );
+  }
 
   @Post('submit/:courseId')
   async submitExam(
@@ -18,6 +29,10 @@ export class ExamManagerController {
       req.user.userId,
       courseId
     );
+
+    if (!examAttempt) {
+      throw new ForbiddenException('No active exam attempt found. Please start an exam first.');
+    }
 
     return this.examManagerService.validateAndSubmitExam(
       req.user.userId,

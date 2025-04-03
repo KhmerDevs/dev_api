@@ -135,7 +135,8 @@ export class CertificateService {
     return `CERT-${hash.substring(0, 8)}-${hash.substring(8, 16)}`.toUpperCase();
   }
 
-  private async generatePdfCertificate(certificate: Certificate, user: User, course: Course): Promise<string> {
+  // Changed from private to public so ExamService can use it
+  async generatePdfCertificate(certificate: Certificate, user: User, course: Course): Promise<string> {
     return new Promise((resolve, reject) => {
       try {
         // Create PDF document
